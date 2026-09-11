@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach } from "vitest";
 import { createInitialDirectorState, useDirectorStore } from "../../store/directorStore";
-import { ObjectMotionTransport } from "../ObjectMotionTransport";
+import { getRulerTicks, ObjectMotionTransport } from "../ObjectMotionTransport";
 
 beforeEach(() => {
   const initialState = createInitialDirectorState();
@@ -37,23 +37,82 @@ it("shows a complete, accessible transport in the regular editor", () => {
   expect(screen.getByLabelText("当前动作对象")).toHaveTextContent("角色01");
   expect(screen.getByRole("button", { name: "回到动作开头" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "还没有可播放的人物和物品动作" })).toBeDisabled();
-  expect(screen.getByRole("slider", { name: "场景动作时间轴" })).toHaveValue("0.25");
-  expect(screen.getByLabelText("当前动作时间")).toHaveTextContent("2.0 秒");
-  expect(screen.getByRole("spinbutton", { name: "动作总时长（秒）" })).toHaveValue(8);
+  expect(screen.getByRole("slider", { name: "帧标尺播放头" })).toHaveValue("36");
+  expect(screen.queryByLabelText("当前动作时间")).not.toBeInTheDocument();
+  expect(screen.queryByRole("spinbutton", { name: "动作总时长（秒）" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("slider", { name: "场景动作时间轴" })).not.toBeInTheDocument();
   expect(screen.getByText("路线点、每段动作和朝向请在右侧“路线”页编辑")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "删除角色01当前路线点" })).toBeDisabled();
 });
 
-it("lets users change the shared action duration up to 30 seconds from the bottom transport", () => {
+it("keeps seconds out of the bottom transport", () => {
   render(<ObjectMotionTransport />);
 
-  const durationInput = screen.getByRole("spinbutton", { name: "动作总时长（秒）" });
-  expect(durationInput).toHaveValue(6);
+  expect(screen.queryByLabelText("项目总时长")).not.toBeInTheDocument();
+  expect(screen.queryByText("当前动作时间")).not.toBeInTheDocument();
+});
 
-  fireEvent.change(durationInput, { target: { value: "30" } });
+it("shows a frame ruler and updates its range and frame rate", () => {
+  render(<ObjectMotionTransport />);
 
-  expect(useDirectorStore.getState().project.cameras[0].motionPath?.duration).toBe(30);
-  expect(durationInput).toHaveValue(30);
+  expect(screen.getByRole("region", { name: "帧数标尺" })).toBeInTheDocument();
+  expect(screen.getByRole("slider", { name: "帧标尺播放头" })).toHaveValue("0");
+  expect(screen.getByRole("spinbutton", { name: "动作总帧数" })).toHaveValue(144);
+  expect(screen.getByRole("combobox", { name: "项目帧率" })).toHaveValue("24");
+  fireEvent.change(screen.getByRole("slider", { name: "标尺起始帧" }), { target: { value: "20" } });
+  fireEvent.change(screen.getByRole("slider", { name: "标尺结束帧" }), { target: { value: "100" } });
+  expect(screen.getByText("20 - 100 / 144 帧")).toBeInTheDocument();
+
+  fireEvent.change(screen.getByRole("combobox", { name: "项目帧率" }), { target: { value: "30" } });
+  expect(useDirectorStore.getState().project.fps).toBe(30);
+  expect(screen.getAllByRole("slider")).toHaveLength(3);
+});
+
+it("keeps intermediate ruler ticks when the visible range starts at a non-round frame", () => {
+  const ticks = getRulerTicks(14, 144);
+  expect(ticks.map((tick) => tick.frame)).toEqual(expect.arrayContaining([14, 20, 30, 40, 140, 144]));
+  expect(ticks.filter((tick) => tick.major).length).toBeGreaterThan(4);
+});
+
+it("shows camera waypoints on the ruler and moves a waypoint to an exact frame", () => {
+  const state = useDirectorStore.getState();
+  useDirectorStore.setState({
+    ...state,
+    cameraMotionPlaying: true,
+    project: {
+      ...state.project,
+      cameras: state.project.cameras.map((camera) => ({
+        ...camera,
+        motionPath: {
+          duration: 6,
+          loop: false,
+          interpolation: "linear",
+          easing: "linear",
+          speedMode: "uniform",
+          keyframes: [
+            { id: "point_1", time: 0, position: [0, 2, 8], target: [0, 1, 0], fov: 50 },
+            { id: "point_2", time: 0.5, position: [1, 2, 8], target: [0, 1, 0], fov: 50 },
+            { id: "point_3", time: 1, position: [10, 2, 8], target: [0, 1, 0], fov: 50 },
+          ],
+        },
+      })),
+    },
+  });
+
+  render(<ObjectMotionTransport />);
+
+  const marker = screen.getByRole("slider", { name: "轨迹点 2 帧位置" });
+  expect(marker).toHaveValue("14");
+  fireEvent.change(marker, { target: { value: "48" } });
+
+  const nextState = useDirectorStore.getState();
+  const path = nextState.project.cameras[0].motionPath!;
+  expect(path.keyframes.find((keyframe) => keyframe.id === "point_2")?.time).toBeCloseTo(48 / 144);
+  expect(path.speedMode).toBe("custom");
+  expect(path.customEasing).toEqual([0, 0, 1, 1]);
+  expect(nextState.selectedCameraKeyframeId).toBe("point_2");
+  expect(nextState.cameraMotionProgress).toBeCloseTo(48 / 144);
+  expect(nextState.cameraMotionPlaying).toBe(false);
 });
 
 it("plays and scrubs a camera-only shot, pausing as soon as the timeline is dragged", async () => {
@@ -79,10 +138,10 @@ it("plays and scrubs a camera-only shot, pausing as soon as the timeline is drag
 
   render(<ObjectMotionTransport />);
 
-  const timeline = screen.getByRole("slider", { name: "场景动作时间轴" });
-  fireEvent.change(timeline, { target: { value: "0.42" } });
+  const timeline = screen.getByRole("slider", { name: "帧标尺播放头" });
+  fireEvent.change(timeline, { target: { value: "60" } });
   expect(useDirectorStore.getState().cameraMotionPlaying).toBe(false);
-  expect(useDirectorStore.getState().cameraMotionProgress).toBe(0.42);
+  expect(useDirectorStore.getState().cameraMotionProgress).toBeCloseTo(60 / 144);
 
   await user.click(screen.getByRole("button", { name: "播放人物和物品动作" }));
   expect(useDirectorStore.getState().cameraMotionPlaying).toBe(true);
@@ -187,7 +246,7 @@ it("shows only the compact playback controls while piloting", () => {
 
   expect(screen.getByRole("region", { name: "掌镜人物和道具动作播放条" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "播放人物和物品动作" })).toBeInTheDocument();
-  expect(screen.getByLabelText("当前动作时间")).toHaveTextContent("3.0 秒");
+  expect(screen.getByLabelText("当前帧")).toHaveTextContent("72");
   expect(screen.getByLabelText("空格键播放或暂停")).toHaveTextContent("空格播放/暂停");
   expect(screen.queryByRole("slider", { name: "场景动作时间轴" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /记录起点|记录当前位置/ })).not.toBeInTheDocument();
@@ -237,8 +296,8 @@ it("shows camera and character move-hold spans on the shared bottom timeline", (
   render(<ObjectMotionTransport />);
 
   expect(screen.getByLabelText("镜头与对象移动停留时间轴")).toBeInTheDocument();
-  expect(screen.getByTitle("镜头停留 2.0 秒")).toBeInTheDocument();
-  expect(screen.getByTitle("角色01停留 1.0 秒")).toBeInTheDocument();
+  expect(screen.getByTitle(/镜头停留第 .*帧至第 .*帧/)).toBeInTheDocument();
+  expect(screen.getByTitle(/角色01停留第 .*帧至第 .*帧/)).toBeInTheDocument();
 });
 
 it("keeps recording actions disabled until a character or prop is selected", () => {

@@ -106,6 +106,7 @@ function cubicCoordinate(t: number, first: number, second: number) {
 export function evaluateCubicBezier(progress: number, curve: DirectorRouteCubicBezier) {
   const x = clamp(progress);
   const [x1, y1, x2, y2] = curve;
+  if (x1 === 0 && y1 === 0 && x2 === 1 && y2 === 1) return x;
   let low = 0;
   let high = 1;
   for (let index = 0; index < 18; index += 1) {

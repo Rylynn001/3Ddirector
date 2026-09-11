@@ -218,7 +218,9 @@ export function createCameraPathTemplate({
     duration: definition.duration,
     loop: false,
     interpolation: templateId === "handheld" ? "linear" : "smooth",
-    easing: templateId === "handheld" ? "linear" : "ease-in-out",
+    easing: "linear",
+    speedMode: "custom",
+    customEasing: [0, 0, 1, 1],
     keyframes: times.map((time, index) => {
       const focus = new Vector3(...focusAt(time));
       const offset = offsetAt(time, index);

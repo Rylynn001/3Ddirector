@@ -97,6 +97,29 @@ it("starts pilot mode and records the current view as a numbered waypoint", asyn
   });
 });
 
+it("records a new waypoint at the current frame instead of appending it to the end", async () => {
+  const user = userEvent.setup();
+  useDirectorStore.getState().recordCameraMotionSnapshot("cam_1", {
+    position: [0, 2, 8], target: [0, 1, 0], fov: 50,
+  });
+  useDirectorStore.getState().recordCameraMotionSnapshot("cam_1", {
+    position: [8, 2, 0], target: [0, 1, 0], fov: 40,
+  });
+  useDirectorStore.setState({
+    ...useDirectorStore.getState(),
+    cameraMotionProgress: 20 / 144,
+  });
+  render(<MotionStudio getViewportCameraSnapshot={() => ({ position: [3, 2, 7], target: [0, 1, 0], fov: 44 })} />);
+
+  await user.click(screen.getAllByRole("button", { name: "添加当前视角为轨迹点" })[0]);
+
+  expect(useDirectorStore.getState().project.cameras[0].motionPath?.keyframes.map((point) => point.time)).toEqual([
+    0,
+    20 / 144,
+    1,
+  ]);
+});
+
 it("hands pilot startup to the viewport so pointer lock can be requested in the click gesture", async () => {
   const user = userEvent.setup();
   const onStartPilot = vi.fn();
@@ -241,23 +264,6 @@ it("lets every waypoint choose its own moving tracking target", async () => {
   expect(keyframes[1]).toMatchObject({ targetMode: "object", targetObjectId: "char_default_a" });
 });
 
-it("applies a motion parameter preset without replacing route points", async () => {
-  const user = userEvent.setup();
-  useDirectorStore.getState().recordCameraMotionSnapshot("cam_1", {
-    position: [0, 2, 8], target: [0, 1, 0], fov: 50,
-  });
-  useDirectorStore.getState().recordCameraMotionSnapshot("cam_1", {
-    position: [4, 2, 4], target: [0, 1, 0], fov: 42,
-  });
-  render(<MotionStudio getViewportCameraSnapshot={() => ({ position: [0, 2, 8], target: [0, 1, 0], fov: 50 })} />);
-
-  await user.selectOptions(screen.getByRole("combobox", { name: "运镜参数预设" }), "fast-follow");
-
-  const path = useDirectorStore.getState().project.cameras[0].motionPath;
-  expect(path).toMatchObject({ duration: 3, interpolation: "smooth", easing: "linear" });
-  expect(path?.keyframes).toHaveLength(2);
-});
-
 it("generates an editable camera route that follows the selected character", async () => {
   const user = userEvent.setup();
   useDirectorStore.setState({
@@ -372,49 +378,26 @@ it("enables stabilization for the complete route while keeping per-waypoint over
   expect(screen.getByText("已开启 2 / 3 个点，仍可在下方单独修改")).toBeInTheDocument();
 });
 
-it("lets users retime an individual middle waypoint to control segment speed", async () => {
+it("keeps timing controls out of motion details and labels waypoints by frame", async () => {
   const user = userEvent.setup();
   for (const position of [[0, 2, 8], [2, 2, 6], [5, 2, 3]] as [number, number, number][]) {
     useDirectorStore.getState().recordCameraMotionSnapshot("cam_1", { position, target: [0, 1, 0], fov: 50 });
   }
   render(<MotionStudio getViewportCameraSnapshot={() => ({ position: [0, 2, 8], target: [0, 1, 0], fov: 50 })} />);
 
-  await user.click(screen.getByRole("button", { name: "自定义" }));
-  await user.click(screen.getByRole("button", { name: "选择轨迹点 2" }));
-  const arrival = screen.getByRole("spinbutton", { name: "当前轨迹点到达时间" });
-  await user.clear(arrival);
-  await user.type(arrival, "4");
-  await user.tab();
-
-  expect(useDirectorStore.getState().project.cameras[0].motionPath?.keyframes[1].time).toBeCloseTo(4 / 6);
-});
-
-it("offers uniform soft and custom timing plus an explicit waypoint hold", async () => {
-  const user = userEvent.setup();
-  for (const position of [[0, 2, 8], [2, 2, 6], [5, 2, 3]] as [number, number, number][]) {
-    useDirectorStore.getState().recordCameraMotionSnapshot("cam_1", { position, target: [0, 1, 0], fov: 50 });
-  }
-  render(<MotionStudio getViewportCameraSnapshot={() => ({ position: [0, 2, 8], target: [0, 1, 0], fov: 50 })} />);
-
-  await user.click(screen.getByRole("button", { name: "匀速" }));
-  expect(useDirectorStore.getState().project.cameras[0].motionPath?.speedMode).toBe("uniform");
-  await user.click(screen.getByRole("button", { name: "柔和" }));
-  expect(useDirectorStore.getState().project.cameras[0].motionPath?.speedMode).toBe("soft");
+  expect(screen.queryByRole("combobox", { name: "运镜参数预设" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("slider", { name: "整段运镜时长" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("group", { name: "速度曲线" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("spinbutton", { name: "当前轨迹点到达时间" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "选择轨迹点 2" })).toHaveTextContent("第 72 帧");
 
   await user.click(screen.getByRole("button", { name: "选择轨迹点 2" }));
-  expect(screen.getByRole("spinbutton", { name: "当前轨迹点到达时间" })).toBeDisabled();
   await user.click(screen.getByRole("button", { name: "停留" }));
   const hold = screen.getByRole("slider", { name: "轨迹点停留时长" });
   fireEvent.change(hold, { target: { value: "1.4" } });
 
   const point = useDirectorStore.getState().project.cameras[0].motionPath?.keyframes[1];
   expect(point).toMatchObject({ pointBehavior: "hold", holdSeconds: 1.4 });
-  await user.click(screen.getByRole("button", { name: "自定义" }));
-  expect(screen.getByRole("spinbutton", { name: "当前轨迹点到达时间" })).toBeEnabled();
-  const cameraEasing = screen.getByRole("group", { name: "镜头段内节奏" });
-  await user.click(within(cameraEasing).getByRole("button", { name: "慢起" }));
-  expect(useDirectorStore.getState().project.cameras[0].motionPath?.customEasing).toEqual([0.42, 0, 1, 1]);
-  expect(within(cameraEasing).getByRole("button", { name: "慢起" })).toHaveAttribute("aria-pressed", "true");
 });
 
 it("seeks to the computed arrival when selecting a waypoint in automatic timing modes", async () => {
@@ -446,7 +429,7 @@ it("seeks to the computed arrival when selecting a waypoint in automatic timing 
   await user.click(screen.getByRole("button", { name: "选择轨迹点 2" }));
 
   expect(useDirectorStore.getState().cameraMotionProgress).toBeCloseTo(0.1, 4);
-  expect(screen.getByRole("button", { name: "选择轨迹点 2" })).toHaveTextContent("1.0s");
+  expect(screen.getByRole("button", { name: "选择轨迹点 2" })).toHaveTextContent("第 14 帧");
 });
 
 it("shows a reference video export entry", async () => {

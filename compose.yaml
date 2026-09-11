@@ -1,0 +1,10 @@
+services:
+  director:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: 3d-director:latest
+    container_name: 3d-director
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-81}:80"

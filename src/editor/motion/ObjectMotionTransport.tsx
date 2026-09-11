@@ -7,16 +7,36 @@ import {
   RotateCcw,
   Trash2,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { DEFAULT_CAMERA_MOTION_PATH, getCameraMotionPath, getCameraMotionTimingPlan } from "../schema/cameraMotion";
 import { getObjectMotionTimingPlan, normalizeObjectMotionPath } from "../schema/objectMotion";
 import type { RouteTimingPlan } from "../schema/routeTiming";
+import { DEFAULT_FPS, DEFAULT_TOTAL_FRAMES, formatFrame, frameToProgress, progressToFrame } from "../schema/frameTime";
 import { useDirectorStore } from "../store/directorStore";
 import "./objectMotionTransport.css";
 
 const CURRENT_KEYFRAME_TOLERANCE = 0.005;
 
-function formatSeconds(seconds: number) {
-  return `${seconds.toFixed(1)} 秒`;
+export function getRulerTicks(startFrame: number, endFrame: number) {
+  const start = Math.min(startFrame, endFrame);
+  const end = Math.max(startFrame, endFrame);
+  const span = Math.max(1, end - start);
+  const targetLabelCount = 14;
+  const roughStep = span / (targetLabelCount - 1);
+  const magnitude = 10 ** Math.floor(Math.log10(roughStep));
+  const normalizedStep = roughStep / magnitude;
+  const niceMultiplier = normalizedStep <= 1 ? 1 : normalizedStep <= 2 ? 2 : normalizedStep <= 5 ? 5 : 10;
+  const majorStep = niceMultiplier * magnitude;
+  const minorStep = Math.max(1, majorStep / (majorStep >= 5 ? 5 : 2));
+  const frames = new Set<number>([start, end]);
+
+  for (let frame = Math.ceil(start / minorStep) * minorStep; frame <= end; frame += minorStep) {
+    frames.add(Math.round(frame));
+  }
+
+  return [...frames]
+    .sort((left, right) => left - right)
+    .map((frame) => ({ frame, major: frame === start || frame === end || frame % majorStep === 0 }));
 }
 
 function getRouteSpans(times: number[], plan: RouteTimingPlan | null) {
@@ -68,14 +88,29 @@ export function ObjectMotionTransport() {
   const addObjectMotionKeyframe = useDirectorStore((state) => state.addObjectMotionKeyframe);
   const deleteObjectMotionKeyframe = useDirectorStore((state) => state.deleteObjectMotionKeyframe);
   const selectObjectMotionKeyframe = useDirectorStore((state) => state.selectObjectMotionKeyframe);
+  const selectedCameraKeyframeId = useDirectorStore((state) => state.selectedCameraKeyframeId);
+  const selectCameraMotionKeyframe = useDirectorStore((state) => state.selectCameraMotionKeyframe);
+  const updateCameraMotionPath = useDirectorStore((state) => state.updateCameraMotionPath);
   const setProgress = useDirectorStore((state) => state.setCameraMotionProgress);
   const setPlaying = useDirectorStore((state) => state.setCameraMotionPlaying);
-  const updateCameraMotionPath = useDirectorStore((state) => state.updateCameraMotionPath);
+  const beginUndoBatch = useDirectorStore((state) => state.beginUndoBatch);
+  const endUndoBatch = useDirectorStore((state) => state.endUndoBatch);
+  const updateTotalFrames = useDirectorStore((state) => state.updateTotalFrames);
+  const updateFps = useDirectorStore((state) => state.updateFps);
 
+  const fps = useDirectorStore((state) => state.project.fps ?? DEFAULT_FPS);
+  const totalFrames = useDirectorStore((state) => state.project.totalFrames ?? DEFAULT_TOTAL_FRAMES);
+  const currentFrame = progressToFrame(progress, totalFrames);
   const duration = activeCamera
     ? getCameraMotionPath(activeCamera).duration
     : DEFAULT_CAMERA_MOTION_PATH.duration;
-  const currentSeconds = progress * duration;
+  const [rulerStartFrame, setRulerStartFrame] = useState(0);
+  const [rulerEndFrame, setRulerEndFrame] = useState(totalFrames);
+
+  useEffect(() => {
+    setRulerStartFrame((value) => Math.min(Math.max(0, value), Math.max(0, totalFrames - 1)));
+    setRulerEndFrame((value) => Math.max(1, Math.min(totalFrames, value)));
+  }, [totalFrames]);
   const isPiloting = pilotMode !== "idle";
   const selectedObject = objects.find(
     (object) => object.id === selectedObjectId && (object.kind === "character" || object.kind === "prop")
@@ -123,6 +158,35 @@ export function ObjectMotionTransport() {
     setProgress(nextProgress);
   }
 
+  function seekFrame(frame: number) {
+    seek(frameToProgress(frame, totalFrames));
+  }
+
+  function moveCameraWaypointToFrame(keyframeId: string, frame: number) {
+    if (!activeCamera || !cameraPath) return;
+    const nextProgress = frameToProgress(frame, totalFrames);
+    const keyframes = cameraPath.keyframes.map((keyframe, index) => ({
+      ...keyframe,
+      time: keyframe.id === keyframeId
+        ? nextProgress
+        : cameraSpans?.arrivals[index] ?? keyframe.time,
+    }));
+
+    updateCameraMotionPath(activeCamera.id, {
+      speedMode: "custom",
+      easing: "linear",
+      customEasing: [0, 0, 1, 1],
+      keyframes,
+    });
+    selectCameraMotionKeyframe(keyframeId);
+    seekFrame(frame);
+  }
+
+  const rulerSpan = Math.max(1, rulerEndFrame - rulerStartFrame);
+  const rulerTicks = getRulerTicks(rulerStartFrame, rulerEndFrame);
+  const visibleCurrentFrame = Math.min(rulerEndFrame, Math.max(rulerStartFrame, currentFrame));
+  const isCurrentFrameVisible = currentFrame >= rulerStartFrame && currentFrame <= rulerEndFrame;
+
   if (isPiloting) {
     return (
       <section
@@ -141,8 +205,8 @@ export function ObjectMotionTransport() {
         >
           {playing ? <Pause aria-hidden="true" size={16} /> : <Play aria-hidden="true" size={16} />}
         </button>
-        <output className="object-motion-transport__compact-time" aria-label="当前动作时间">
-          {formatSeconds(currentSeconds)}
+        <output className="object-motion-transport__compact-time" aria-label="当前帧">
+          第 {formatFrame(currentFrame)} 帧
         </output>
         <span className="object-motion-transport__shortcut" aria-label="空格键播放或暂停">
           <kbd>空格</kbd>
@@ -194,43 +258,137 @@ export function ObjectMotionTransport() {
         >
           {playing ? <Pause aria-hidden="true" size={17} /> : <Play aria-hidden="true" size={17} />}
         </button>
-        <output className="object-motion-transport__time" aria-label="当前动作时间">
-          {formatSeconds(currentSeconds)}
-        </output>
-        <input
-          className="object-motion-transport__scrubber"
-          aria-label="场景动作时间轴"
-          aria-valuetext={`${formatSeconds(currentSeconds)}，共 ${formatSeconds(duration)}`}
-          type="range"
-          min="0"
-          max="1"
-          step="0.001"
-          value={progress}
-          onChange={(event) => seek(Number(event.currentTarget.value))}
-        />
-        <label className="object-motion-transport__duration-control">
-          <span>总时长</span>
+      </div>
+
+      <div className="object-motion-transport__ruler-panel" role="region" aria-label="帧数标尺">
+        <div className="object-motion-transport__ruler-toolbar">
+          <strong>帧标尺</strong>
+          <span>{rulerStartFrame} - {rulerEndFrame} / {totalFrames} 帧</span>
+          <label className="object-motion-transport__frame-count-control">
+            总帧数
+            <input
+              aria-label="动作总帧数"
+              type="number"
+              min="24"
+              max="720"
+              step="1"
+              value={totalFrames}
+              onChange={(event) => updateTotalFrames(Number(event.currentTarget.value))}
+            />
+          </label>
+          <label>
+            帧/秒
+            <select
+              aria-label="项目帧率"
+              value={fps}
+              onChange={(event) => updateFps(Number(event.currentTarget.value))}
+            >
+              {[12, 24, 25, 30, 48, 50, 60].map((value) => (
+                <option key={value} value={value}>{value}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="object-motion-transport__ruler" aria-label="帧标尺刻度">
+          {rulerTicks.map(({ frame, major }) => {
+            return (
+              <span
+                className={`object-motion-transport__ruler-tick${major ? " is-major" : ""}${frame === rulerStartFrame ? " is-first" : ""}${frame === rulerEndFrame ? " is-last" : ""}`}
+                key={frame}
+                data-frame={major ? frame : undefined}
+                style={{ left: `${((frame - rulerStartFrame) / rulerSpan) * 100}%` }}
+              />
+            );
+          })}
+          {activeCamera && cameraPath ? cameraPath.keyframes.map((keyframe, index) => {
+            const waypointFrame = progressToFrame(cameraSpans?.arrivals[index] ?? keyframe.time, totalFrames);
+            if (waypointFrame < rulerStartFrame || waypointFrame > rulerEndFrame) return null;
+            return (
+              <input
+                className={`object-motion-transport__camera-waypoint${selectedCameraKeyframeId === keyframe.id ? " is-selected" : ""}`}
+                key={keyframe.id}
+                aria-label={`轨迹点 ${index + 1} 帧位置`}
+                aria-valuetext={`轨迹点 ${index + 1}，第 ${waypointFrame} 帧`}
+                title={`轨迹点 ${index + 1} · 第 ${waypointFrame} 帧`}
+                type="range"
+                min={String(rulerStartFrame)}
+                max={String(rulerEndFrame)}
+                step="1"
+                value={waypointFrame}
+                onPointerDown={() => {
+                  beginUndoBatch();
+                  setPlaying(false);
+                  selectCameraMotionKeyframe(keyframe.id);
+                }}
+                onPointerUp={endUndoBatch}
+                onPointerCancel={endUndoBatch}
+                onBlur={endUndoBatch}
+                onChange={(event) => moveCameraWaypointToFrame(keyframe.id, Number(event.currentTarget.value))}
+              />
+            );
+          }) : null}
+          {isCurrentFrameVisible ? <>
+            <i
+              className="object-motion-transport__ruler-playhead"
+              style={{ left: `${((visibleCurrentFrame - rulerStartFrame) / rulerSpan) * 100}%` }}
+            />
+            <output
+              className="object-motion-transport__ruler-frame-label"
+              aria-label="当前帧标记"
+              style={{ left: `clamp(14px, ${((visibleCurrentFrame - rulerStartFrame) / rulerSpan) * 100}%, calc(100% - 14px))` }}
+            >
+              {formatFrame(currentFrame)}
+            </output>
+          </> : null}
           <input
-            aria-label="动作总时长（秒）"
-            type="number"
-            min="0.5"
-            max="30"
-            step="0.5"
-            value={duration}
-            onChange={(event) => {
-              if (!activeCamera) return;
-              updateCameraMotionPath(activeCamera.id, { duration: Number(event.currentTarget.value) });
+            className="object-motion-transport__ruler-scrubber"
+            aria-label="帧标尺播放头"
+            type="range"
+            min={String(rulerStartFrame)}
+            max={String(rulerEndFrame)}
+            step="1"
+            value={visibleCurrentFrame}
+            onChange={(event) => seekFrame(Number(event.currentTarget.value))}
+          />
+        </div>
+        <div className="object-motion-transport__ruler-range" aria-label="帧标尺显示范围">
+          <span className="object-motion-transport__ruler-range-track" aria-hidden="true" />
+          <span
+            className="object-motion-transport__ruler-range-selection"
+            aria-hidden="true"
+            style={{
+              left: `${(rulerStartFrame / totalFrames) * 100}%`,
+              width: `${((rulerEndFrame - rulerStartFrame) / totalFrames) * 100}%`,
             }}
           />
-          <span>秒</span>
-        </label>
+          <input
+            className="object-motion-transport__range-input object-motion-transport__range-input--start"
+            aria-label="标尺起始帧"
+            type="range"
+            min="0"
+            max={String(Math.max(1, totalFrames - 1))}
+            value={rulerStartFrame}
+            onChange={(event) => setRulerStartFrame(Math.min(Number(event.currentTarget.value), rulerEndFrame - 1))}
+          />
+          <input
+            className="object-motion-transport__range-input object-motion-transport__range-input--end"
+            aria-label="标尺结束帧"
+            type="range"
+            min="1"
+            max={String(totalFrames)}
+            value={rulerEndFrame}
+            onChange={(event) => setRulerEndFrame(Math.max(Number(event.currentTarget.value), rulerStartFrame + 1))}
+          />
+          <output className="object-motion-transport__ruler-range-start">起始 {rulerStartFrame}</output>
+          <output className="object-motion-transport__ruler-range-end">结束 {rulerEndFrame}</output>
+        </div>
       </div>
 
       {(cameraSpans?.moves.length || objectSpans?.moves.length) ? (
         <div className="object-motion-transport__tracks" aria-label="镜头与对象移动停留时间轴">
           <div className="object-motion-transport__tracks-heading">
             <strong>镜头与人物时间轴</strong>
-            <span><i className="is-move" />移动 <i className="is-hold" />停留 <i className="is-playhead" />当前时间</span>
+            <span><i className="is-move" />移动 <i className="is-hold" />停留 <i className="is-playhead" />当前帧</span>
           </div>
           {cameraSpans?.moves.length ? (
             <div className="object-motion-transport__track object-motion-transport__track--camera">
@@ -244,7 +402,7 @@ export function ObjectMotionTransport() {
                     key={`camera-move-${span.index}`}
                     className={`object-motion-transport__span is-move${progress >= span.start && progress < span.end ? " is-active" : ""}`}
                     style={{ left: `${span.start * 100}%`, width: `${Math.max(0, span.end - span.start) * 100}%` }}
-                    title={`镜头移动 ${formatSeconds(span.start * duration)} - ${formatSeconds(span.end * duration)}`}
+                    title={`镜头移动 第 ${progressToFrame(span.start, totalFrames)} 帧 - 第 ${progressToFrame(span.end, totalFrames)} 帧`}
                   />
                 ))}
                 {cameraSpans.holds.map((span) => (
@@ -252,14 +410,14 @@ export function ObjectMotionTransport() {
                     key={`camera-hold-${span.index}`}
                     className={`object-motion-transport__span is-hold${progress >= span.start && progress < span.end ? " is-active" : ""}`}
                     style={{ left: `${span.start * 100}%`, width: `${Math.max(0, span.end - span.start) * 100}%` }}
-                    title={`镜头停留 ${formatSeconds((span.end - span.start) * duration)}`}
+                    title={`镜头停留第 ${progressToFrame(span.start, totalFrames)} 帧至第 ${progressToFrame(span.end, totalFrames)} 帧`}
                   />
                 ))}
                 <i className="object-motion-transport__playhead" style={{ left: `${progress * 100}%` }} />
                 <input
                   className="object-motion-transport__track-scrubber"
                   aria-label="拖动镜头时间轴"
-                  aria-valuetext={`${formatSeconds(currentSeconds)}，共 ${formatSeconds(duration)}`}
+                  aria-valuetext={`第 ${formatFrame(currentFrame)} 帧，共 ${totalFrames} 帧`}
                   type="range"
                   min="0"
                   max="1"
@@ -282,7 +440,7 @@ export function ObjectMotionTransport() {
                     key={`object-move-${span.index}`}
                     className={`object-motion-transport__span is-move${progress >= span.start && progress < span.end ? " is-active" : ""}`}
                     style={{ left: `${span.start * 100}%`, width: `${Math.max(0, span.end - span.start) * 100}%` }}
-                    title={`${selectedObject?.name ?? "对象"}移动 ${formatSeconds(span.start * duration)} - ${formatSeconds(span.end * duration)}`}
+                    title={`${selectedObject?.name ?? "对象"}移动 第 ${progressToFrame(span.start, totalFrames)} 帧 - 第 ${progressToFrame(span.end, totalFrames)} 帧`}
                   />
                 ))}
                 {objectSpans.holds.map((span) => (
@@ -290,14 +448,14 @@ export function ObjectMotionTransport() {
                     key={`object-hold-${span.index}`}
                     className={`object-motion-transport__span is-hold${progress >= span.start && progress < span.end ? " is-active" : ""}`}
                     style={{ left: `${span.start * 100}%`, width: `${Math.max(0, span.end - span.start) * 100}%` }}
-                    title={`${selectedObject?.name ?? "对象"}停留 ${formatSeconds((span.end - span.start) * duration)}`}
+                    title={`${selectedObject?.name ?? "对象"}停留第 ${progressToFrame(span.start, totalFrames)} 帧至第 ${progressToFrame(span.end, totalFrames)} 帧`}
                   />
                 ))}
                 <i className="object-motion-transport__playhead" style={{ left: `${progress * 100}%` }} />
                 <input
                   className="object-motion-transport__track-scrubber"
                   aria-label="拖动人物时间轴"
-                  aria-valuetext={`${formatSeconds(currentSeconds)}，共 ${formatSeconds(duration)}`}
+                  aria-valuetext={`第 ${formatFrame(currentFrame)} 帧，共 ${totalFrames} 帧`}
                   type="range"
                   min="0"
                   max="1"
@@ -343,7 +501,7 @@ export function ObjectMotionTransport() {
                 type="button"
                 aria-label={`跳转到${selectedObject?.name ?? "对象"}${pointLabel} ${index + 1}`}
                 aria-pressed={isCurrent}
-                title={`${formatSeconds((objectSpans?.arrivals[index] ?? keyframe.time) * duration)} · ${pointLabel} ${index + 1}`}
+                title={`第 ${progressToFrame(objectSpans?.arrivals[index] ?? keyframe.time, totalFrames)} 帧 · ${pointLabel} ${index + 1}`}
                 onClick={() => {
                   selectObjectMotionKeyframe(keyframe.id);
                   seek(objectSpans?.arrivals[index] ?? keyframe.time);

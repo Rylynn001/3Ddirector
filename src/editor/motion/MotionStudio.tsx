@@ -1,6 +1,4 @@
 import {
-  ArrowDown,
-  ArrowUp,
   ChevronDown,
   ChevronUp,
   Download,
@@ -30,14 +28,10 @@ import {
   getDirectorObjectFocusTarget,
   isCameraFocusableObject,
 } from "../schema/cameraTarget";
+import { DEFAULT_TOTAL_FRAMES, progressToFrame } from "../schema/frameTime";
 import { getObjectMotionSnapshot } from "../schema/objectMotion";
 import type { CameraShotSnapshot } from "../store/directorStore";
 import { useDirectorStore } from "../store/directorStore";
-import {
-  CAMERA_MOTION_PRESETS,
-  findMatchingCameraMotionPreset,
-  getCameraMotionPresetPatch,
-} from "./cameraMotionPresets";
 import {
   CAMERA_PATH_TEMPLATES,
   createCameraPathTemplate,
@@ -49,7 +43,6 @@ import {
   type DirectorCameraTargetBodyPart,
   type DirectorCameraTargetFollowMode,
 } from "../schema/semanticBody";
-import { RouteCustomEasingControl } from "./RouteCustomEasingControl";
 
 export function getActiveCameraWaypointIndex(progress: number, times: number[]) {
   if (times.length === 0) return -1;
@@ -83,6 +76,7 @@ export function MotionStudio({
   const cameraPilotFollowTarget = useDirectorStore((state) => state.cameraPilotFollowTarget);
   const selectedObjectId = useDirectorStore((state) => state.selectedObjectId);
   const sceneObjects = useDirectorStore((state) => state.project.objects);
+  const totalFrames = useDirectorStore((state) => state.project.totalFrames ?? DEFAULT_TOTAL_FRAMES);
   const setMotionStudioOpen = useDirectorStore((state) => state.setMotionStudioOpen);
   const setViewMode = useDirectorStore((state) => state.setViewMode);
   const ensureMotionCamera = useDirectorStore((state) => state.ensureMotionCamera);
@@ -106,7 +100,6 @@ export function MotionStudio({
   const [exportQuality, setExportQuality] = useState<ReferenceVideoExportQuality>("720p");
   const [exporting, setExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
-  const [arrivalTimeDraft, setArrivalTimeDraft] = useState("");
   const [templateTargetObjectId, setTemplateTargetObjectId] = useState("");
   const [templateScale, setTemplateScale] = useState(1);
   const [templateGroup, setTemplateGroup] = useState<"official" | "community">("official");
@@ -129,22 +122,7 @@ export function MotionStudio({
   }, [selectedObjectId]);
 
   const activeMotionPath = activeCamera ? getCameraMotionPath(activeCamera) : null;
-  const activeSelectedKeyframe = activeMotionPath?.keyframes.find((item) => item.id === selectedCameraKeyframeId) ?? null;
   const activeTimingPlan = activeCamera ? getCameraMotionTimingPlan(activeCamera) : null;
-  const activeSelectedIndex = activeMotionPath && activeSelectedKeyframe
-    ? activeMotionPath.keyframes.indexOf(activeSelectedKeyframe)
-    : -1;
-  const activeSelectedArrival = activeSelectedIndex >= 0
-    ? activeTimingPlan?.arrivals[activeSelectedIndex] ?? activeSelectedKeyframe?.time ?? 0
-    : 0;
-
-  useEffect(() => {
-    setArrivalTimeDraft(
-      activeSelectedKeyframe && activeMotionPath
-        ? (activeSelectedArrival * activeMotionPath.duration).toFixed(1)
-        : ""
-    );
-  }, [activeMotionPath?.duration, activeSelectedArrival, activeSelectedKeyframe?.id]);
 
   if (!open || !activeCamera) return null;
 
@@ -162,7 +140,6 @@ export function MotionStudio({
   const stabilizedWaypointCount = motionPath.keyframes.filter((keyframe) => keyframe.targetStabilizationEnabled).length;
   const allWaypointsStabilized = motionPath.keyframes.length > 0
     && stabilizedWaypointCount === motionPath.keyframes.length;
-  const matchingPreset = findMatchingCameraMotionPreset(motionPath);
   const timingSample = getCameraMotionTimingSample(activeCamera, cameraMotionProgress);
   const activeIndex = timingSample?.holdingPointIndex
     ?? timingSample?.segment
@@ -172,7 +149,12 @@ export function MotionStudio({
   const activeTemplate = CAMERA_PATH_TEMPLATES.find((template) => template.id === activeTemplateId) ?? null;
 
   function addCurrentView() {
-    recordCameraMotionSnapshot(activeCamera.id, getViewportCameraSnapshot());
+    recordCameraMotionSnapshot(
+      activeCamera.id,
+      getViewportCameraSnapshot(),
+      null,
+      cameraMotionProgress > 0.0001 && cameraMotionProgress < 0.9999 ? cameraMotionProgress : null,
+    );
   }
 
   function selectWaypoint(id: string, time: number) {
@@ -257,11 +239,6 @@ export function MotionStudio({
         targetStabilizationEnabled,
       })),
     });
-  }
-
-  function applyMotionPreset(presetId: string) {
-    const patch = getCameraMotionPresetPatch(presetId);
-    if (patch) updateCameraMotionPath(activeCamera.id, patch);
   }
 
   function generatePathTemplate({
@@ -349,44 +326,6 @@ export function MotionStudio({
     setViewMode(mode);
     if (cameraMotionProgress >= 0.999) setCameraMotionProgress(0);
     setCameraMotionPlaying(true);
-  }
-
-  function updateSelectedArrivalTime(seconds: number) {
-    if (!selectedKeyframe) return;
-    const index = motionPath.keyframes.indexOf(selectedKeyframe);
-    if (index <= 0 || index >= motionPath.keyframes.length - 1) return;
-    const previous = motionPath.keyframes[index - 1];
-    const next = motionPath.keyframes[index + 1];
-    const minimum = previous.time * motionPath.duration
-      + (previous.pointBehavior === "hold" ? previous.holdSeconds ?? 0 : 0)
-      + 0.1;
-    const maximum = next.time * motionPath.duration - 0.1;
-    const clamped = Math.min(maximum, Math.max(minimum, seconds));
-    updateCameraMotionKeyframe(activeCamera.id, selectedKeyframe.id, {
-      time: clamped / motionPath.duration,
-    });
-    setCameraMotionProgress(clamped / motionPath.duration);
-    setArrivalTimeDraft(clamped.toFixed(1));
-  }
-
-  function setCameraSpeedMode(speedMode: "uniform" | "soft" | "custom") {
-    const keyframes = speedMode === "custom" && motionPath.speedMode !== "custom" && activeTimingPlan
-      ? motionPath.keyframes.map((keyframe, index) => ({
-          ...keyframe,
-          time: activeTimingPlan.arrivals[index] ?? keyframe.time,
-        }))
-      : motionPath.keyframes;
-    updateCameraMotionPath(activeCamera.id, {
-      speedMode,
-      easing: speedMode === "uniform" ? "linear" : "ease-in-out",
-      ...(speedMode === "custom" ? { customEasing: [0, 0, 1, 1], keyframes } : {}),
-    });
-  }
-
-  function commitArrivalTimeDraft() {
-    const seconds = Number(arrivalTimeDraft);
-    if (Number.isFinite(seconds)) updateSelectedArrivalTime(seconds);
-    else if (selectedKeyframe) setArrivalTimeDraft((selectedKeyframe.time * motionPath.duration).toFixed(1));
   }
 
   async function exportReferenceVideo() {
@@ -665,7 +604,7 @@ export function MotionStudio({
                       onClick={() => selectWaypoint(keyframe.id, activeTimingPlan?.arrivals[index] ?? keyframe.time)}
                     >
                       <span>{index + 1}</span>
-                      <small>{((activeTimingPlan?.arrivals[index] ?? keyframe.time) * motionPath.duration).toFixed(1)}s{trackedObjectName ? " · 跟" : ""}</small>
+                      <small>第 {progressToFrame(activeTimingPlan?.arrivals[index] ?? keyframe.time, totalFrames)} 帧{trackedObjectName ? " · 跟" : ""}</small>
                     </button>
                   </div>
                 );
@@ -679,31 +618,6 @@ export function MotionStudio({
           {selectedKeyframe && !batchSelectionEnabled ? (
             <div className="motion-selected-actions" aria-label="当前轨迹点操作">
               <span>轨迹点 {motionPath.keyframes.indexOf(selectedKeyframe) + 1}</span>
-              {motionPath.keyframes.indexOf(selectedKeyframe) > 0 && motionPath.keyframes.indexOf(selectedKeyframe) < motionPath.keyframes.length - 1 ? (
-                <label className="motion-waypoint-arrival">
-                  到达
-                  <input
-                    aria-label="当前轨迹点到达时间"
-                    type="number"
-                    min={(
-                      motionPath.keyframes[motionPath.keyframes.indexOf(selectedKeyframe) - 1].time * motionPath.duration
-                      + (motionPath.keyframes[motionPath.keyframes.indexOf(selectedKeyframe) - 1].pointBehavior === "hold"
-                        ? motionPath.keyframes[motionPath.keyframes.indexOf(selectedKeyframe) - 1].holdSeconds ?? 0
-                        : 0)
-                      + 0.1
-                    ).toFixed(1)}
-                    max={(motionPath.keyframes[motionPath.keyframes.indexOf(selectedKeyframe) + 1].time * motionPath.duration - 0.1).toFixed(1)}
-                    step="0.1"
-                    value={arrivalTimeDraft}
-                    disabled={motionPath.speedMode !== "custom"}
-                    onChange={(event) => setArrivalTimeDraft(event.currentTarget.value)}
-                    onBlur={commitArrivalTimeDraft}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") event.currentTarget.blur();
-                    }}
-                  />秒{motionPath.speedMode !== "custom" ? <small>自动</small> : null}
-                </label>
-              ) : null}
               <button type="button" onClick={editSelectedWaypoint}><MousePointer2 aria-hidden="true" size={13} />进入此点调整</button>
               <button
                 type="button"
@@ -734,42 +648,8 @@ export function MotionStudio({
         <div className="motion-settings-column">
           <div className="motion-block-heading">
             <strong>运镜细节</strong>
-            <small>速度、平滑和主体锁定</small>
+            <small>轨迹形状和主体锁定</small>
           </div>
-          <label className="motion-setting-row motion-preset-row">
-            <span><SlidersHorizontal aria-hidden="true" size={14} />速度与节奏</span>
-            <select
-              className="motion-tracking-select"
-              aria-label="运镜参数预设"
-              value={matchingPreset?.id ?? "custom"}
-              onChange={(event) => applyMotionPreset(event.currentTarget.value)}
-            >
-              <option value="custom" disabled>自定义</option>
-              {CAMERA_MOTION_PRESETS.map((preset) => (
-                <option key={preset.id} value={preset.id}>{preset.label}</option>
-              ))}
-            </select>
-            <small className="motion-tracking-status">
-              {matchingPreset?.description ?? "选择预设不会改变已经摆好的轨迹点"}
-            </small>
-          </label>
-          <label className="motion-setting-row">
-            <span><Gauge aria-hidden="true" size={14} />整段时长</span>
-            <input
-              aria-label="整段运镜时长"
-              type="range"
-              min="0.5"
-              max="30"
-              step="0.5"
-              value={motionPath.duration}
-              onPointerDown={beginUndoBatch}
-              onPointerUp={endUndoBatch}
-              onPointerCancel={endUndoBatch}
-              onBlur={endUndoBatch}
-              onChange={(event) => updateCameraMotionPath(activeCamera.id, { duration: Number(event.currentTarget.value) })}
-            />
-            <output>{motionPath.duration.toFixed(1)}s</output>
-          </label>
           <div className="motion-setting-row">
             <span><SlidersHorizontal aria-hidden="true" size={14} />轨迹形状</span>
             <div className="motion-mini-segmented" role="group" aria-label="轨迹形状">
@@ -777,21 +657,6 @@ export function MotionStudio({
               <button type="button" aria-pressed={motionPath.interpolation === "linear"} onClick={() => updateCameraMotionPath(activeCamera.id, { interpolation: "linear" })}>折线</button>
             </div>
           </div>
-          <div className="motion-setting-row">
-            <span><ArrowUp aria-hidden="true" size={14} /><ArrowDown aria-hidden="true" size={14} />速度曲线</span>
-            <div className="motion-mini-segmented" role="group" aria-label="速度曲线">
-              <button type="button" aria-pressed={(motionPath.speedMode ?? (motionPath.easing === "linear" ? "uniform" : "soft")) === "uniform"} onClick={() => setCameraSpeedMode("uniform")}>匀速</button>
-              <button type="button" aria-pressed={(motionPath.speedMode ?? (motionPath.easing === "linear" ? "uniform" : "soft")) === "soft"} onClick={() => setCameraSpeedMode("soft")}>柔和</button>
-              <button type="button" aria-pressed={motionPath.speedMode === "custom"} onClick={() => setCameraSpeedMode("custom")}>自定义</button>
-            </div>
-          </div>
-          {motionPath.speedMode === "custom" ? (
-            <RouteCustomEasingControl
-              curve={motionPath.customEasing}
-              label="镜头段内节奏"
-              onChange={(customEasing) => updateCameraMotionPath(activeCamera.id, { customEasing })}
-            />
-          ) : null}
           <div className="motion-setting-row">
             <span><LocateFixed aria-hidden="true" size={14} />全线防抖</span>
             <div className="motion-mini-segmented" role="group" aria-label="整条镜头路线防抖">

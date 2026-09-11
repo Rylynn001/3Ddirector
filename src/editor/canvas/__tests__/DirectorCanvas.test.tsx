@@ -769,12 +769,12 @@ it("keeps the bottom timeline available in finished-shot view and pauses when sc
 
   render(<App />);
 
-  const timeline = screen.getByRole("slider", { name: "场景动作时间轴" });
-  expect(timeline).toHaveValue("0.25");
+  const timeline = screen.getByRole("slider", { name: "帧标尺播放头" });
+  expect(timeline).toHaveValue("36");
   expect(screen.queryByRole("group", { name: "3D视口快捷工具" })).not.toBeInTheDocument();
-  fireEvent.change(timeline, { target: { value: "0.6" } });
+  fireEvent.change(timeline, { target: { value: "86" } });
   expect(useDirectorStore.getState().cameraMotionPlaying).toBe(false);
-  expect(useDirectorStore.getState().cameraMotionProgress).toBe(0.6);
+  expect(useDirectorStore.getState().cameraMotionProgress).toBeCloseTo(86 / 144);
   expect(useDirectorStore.getState().viewMode).toBe("camera");
   expect(document.querySelector(".director-shell")).toHaveClass("is-camera-previewing");
   expect(screen.queryByRole("group", { name: "3D视口快捷工具" })).not.toBeInTheDocument();

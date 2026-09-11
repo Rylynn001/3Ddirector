@@ -66,8 +66,8 @@ it("seeds the demo with one mannequin role and one camera", () => {
     duration: 6,
     loop: false,
     interpolation: "smooth",
-    easing: "ease-in-out",
-    speedMode: "soft",
+    easing: "linear",
+    speedMode: "custom",
     customEasing: [0, 0, 1, 1],
     keyframes: [],
   });
@@ -1150,8 +1150,8 @@ it("adds an empty motion path when hydrating a legacy camera", () => {
     duration: 6,
     loop: false,
     interpolation: "smooth",
-    easing: "ease-in-out",
-    speedMode: "soft",
+    easing: "linear",
+    speedMode: "custom",
     customEasing: [0, 0, 1, 1],
     keyframes: [],
   });

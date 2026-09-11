@@ -29,10 +29,12 @@ import type {
 import {
   DEFAULT_CAMERA_MOTION_PATH,
   createCameraMotionKeyframe,
+  getCameraMotionTimingPlan,
   getCameraMotionSnapshot,
   normalizeCameraMotionPath,
   retimeCameraMotionKeyframes,
 } from "../schema/cameraMotion";
+import { DEFAULT_FPS, DEFAULT_TOTAL_FRAMES } from "../schema/frameTime";
 import type { PosePresetId } from "../schema/poseSchema";
 import { getDirectorObjectFocusTarget } from "../schema/cameraTarget";
 import { DEFAULT_CHARACTER_BODY_TYPE, normalizeBodyType } from "../runtime/mannequin/bodyTypes";
@@ -315,6 +317,12 @@ function normalizeSceneSettings(scene: SceneSettings): SceneSettings {
 function migrateDirectorProject(project: DirectorProject): DirectorProject {
   return {
     ...project,
+    fps: typeof project.fps === "number" && Number.isFinite(project.fps)
+      ? Math.max(1, Math.min(120, Math.round(project.fps)))
+      : DEFAULT_FPS,
+    totalFrames: typeof project.totalFrames === "number" && Number.isFinite(project.totalFrames)
+      ? Math.max(24, Math.min(720, Math.round(project.totalFrames)))
+      : DEFAULT_TOTAL_FRAMES,
     scene: normalizeSceneSettings(project.scene),
     animationAssets: Array.isArray(project.animationAssets)
       ? project.animationAssets
@@ -522,6 +530,8 @@ export function createDefaultDirectorProject({
 
   return {
     version: 1,
+    fps: DEFAULT_FPS,
+    totalFrames: DEFAULT_TOTAL_FRAMES,
     scene: DEFAULT_SCENE,
     assets: includePersistedLocalAssets ? readPersistedLocalModelAssets() : [],
     animationAssets: [],
@@ -1346,6 +1356,26 @@ export const useDirectorStore = create<DirectorStore>((set, get) => {
             ...state.project.scene,
             ...patch,
           },
+        },
+      })),
+    updateTotalFrames: (totalFrames) =>
+      commitMutation((state) => ({
+        ...state,
+        project: {
+          ...state.project,
+          totalFrames: Number.isFinite(totalFrames)
+            ? Math.max(24, Math.min(720, Math.round(totalFrames)))
+            : state.project.totalFrames,
+        },
+      })),
+    updateFps: (fps) =>
+      commitMutation((state) => ({
+        ...state,
+        project: {
+          ...state.project,
+          fps: Number.isFinite(fps)
+            ? Math.max(1, Math.min(120, Math.round(fps)))
+            : state.project.fps,
         },
       })),
     removePanoramaAsset: () =>
@@ -2579,7 +2609,9 @@ export const useDirectorStore = create<DirectorStore>((set, get) => {
         if (currentIndex < 0 || !nextKeyframe) return state;
 
         const currentKeyframe = motionPath.keyframes[currentIndex];
-        const time = (currentKeyframe.time + nextKeyframe.time) / 2;
+        const arrivals = getCameraMotionTimingPlan(camera)?.arrivals
+          ?? motionPath.keyframes.map((keyframe) => keyframe.time);
+        const time = ((arrivals[currentIndex] ?? currentKeyframe.time) + (arrivals[currentIndex + 1] ?? nextKeyframe.time)) / 2;
         insertedKeyframeId = getNextSequentialId(
           motionPath.keyframes.map((item) => item.id),
           `${cameraId}_motion_key_`,
@@ -2621,7 +2653,16 @@ export const useDirectorStore = create<DirectorStore>((set, get) => {
         };
         const nextMotionPath = normalizeCameraMotionPath({
           ...motionPath,
-          keyframes: [...motionPath.keyframes, insertedKeyframe],
+          speedMode: "custom",
+          easing: "linear",
+          customEasing: [0, 0, 1, 1],
+          keyframes: [
+            ...motionPath.keyframes.map((keyframe, index) => ({
+              ...keyframe,
+              time: arrivals[index] ?? keyframe.time,
+            })),
+            insertedKeyframe,
+          ],
         }, camera.target);
 
         return {
@@ -2696,10 +2737,27 @@ export const useDirectorStore = create<DirectorStore>((set, get) => {
           ...createCameraMotionKeyframe(camera, recordedKeyframeId, snapshot),
           time: normalizedTimelineTime ?? 0,
         };
+        const existingArrivals = normalizedTimelineTime === null
+          ? null
+          : getCameraMotionTimingPlan(camera)?.arrivals;
         const keyframes = normalizedTimelineTime === null
           ? retimeCameraMotionKeyframes([...motionPath.keyframes, nextKeyframe])
-          : [...motionPath.keyframes, nextKeyframe].sort((left, right) => left.time - right.time);
-        const nextMotionPath = normalizeCameraMotionPath({ ...motionPath, keyframes }, camera.target);
+          : [
+              ...motionPath.keyframes.map((keyframe, index) => ({
+                ...keyframe,
+                time: existingArrivals?.[index] ?? keyframe.time,
+              })),
+              nextKeyframe,
+            ].sort((left, right) => left.time - right.time);
+        const nextMotionPath = normalizeCameraMotionPath({
+          ...motionPath,
+          ...(normalizedTimelineTime === null ? {} : {
+            speedMode: "custom" as const,
+            easing: "linear" as const,
+            customEasing: [0, 0, 1, 1] as [number, number, number, number],
+          }),
+          keyframes,
+        }, camera.target);
         const selected = nextMotionPath.keyframes.find((item) => item.id === recordedKeyframeId);
 
         return {

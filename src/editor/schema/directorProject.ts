@@ -209,6 +209,8 @@ export interface DirectorCameraShot {
 
 export interface DirectorProject {
   version: 1;
+  fps: number;
+  totalFrames: number;
   scene: SceneSettings;
   assets: DirectorAssetRef[];
   animationAssets?: DirectorAnimationAssetRef[];

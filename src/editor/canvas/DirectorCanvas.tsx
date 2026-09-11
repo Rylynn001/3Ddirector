@@ -1318,11 +1318,12 @@ export function DirectorCanvas() {
 
   function recordPilotSnapshot(snapshot = viewportCameraSnapshotRef.current) {
     if (!activeCamera) return;
+    const timelineProgress = getRuntimePlaybackProgress();
     recordCameraMotionSnapshot(
       activeCamera.id,
       snapshot,
       cameraPilotEditKeyframeId,
-      hasObjectMotion && cameraMotionPlaying ? getRuntimePlaybackProgress() : null
+      timelineProgress > 0.0001 && timelineProgress < 0.9999 ? timelineProgress : null
     );
     if (cameraPilotEditKeyframeId) {
       stopPilotSession();

@@ -155,6 +155,8 @@ export interface DirectorActions {
   toggleObjectSelection: (id: string) => void;
   openSceneInspector: () => void;
   updateScene: (patch: Partial<SceneSettings>) => void;
+  updateTotalFrames: (totalFrames: number) => void;
+  updateFps: (fps: number) => void;
   removePanoramaAsset: () => void;
   setPanoramaAsset: (input: PanoramaAssetInput) => void;
   removeImportedAsset: (assetId: string) => void;
