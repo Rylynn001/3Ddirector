@@ -126,6 +126,7 @@ export interface DirectorObject {
 }
 
 export interface DirectorObjectMotionKeyframe {
+  tangents?: import("./animationCurves").CurveTangents;
   id: string;
   time: number;
   transform: DirectorTransform;
@@ -163,6 +164,9 @@ export type DirectorRouteHoldAction = "stand" | "current" | "custom";
 export type DirectorRouteCubicBezier = [number, number, number, number];
 
 export interface DirectorCameraMotionKeyframe {
+  rotation?: [number, number, number];
+  scale?: [number, number, number];
+  tangents?: import("./animationCurves").CurveTangents;
   id: string;
   time: number;
   position: [number, number, number];

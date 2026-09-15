@@ -14,7 +14,7 @@ export function getCameraPlaybackSnapshot(
   resolveObjectFocus?: CameraObjectFocusResolver
 ): CameraMotionSnapshot {
   const motionPath = getCameraMotionPath(camera);
-  const base = motionPath.keyframes.length >= 2
+  const base = motionPath.keyframes.length >= 1
     ? getCameraMotionSnapshot(camera, progress)
     : getCameraViewSnapshotFromShot(camera);
   const constrainedObjects = scene?.pathCollisionEnabled
@@ -31,5 +31,5 @@ export function getCameraPlaybackSnapshot(
   const trackingTarget = getAnimatedCameraFocusTarget(camera, constrainedObjects, progress, resolveObjectFocus);
   const position = scene ? constrainCameraPosition(base.position, scene, objects) : base.position;
 
-  return trackingTarget ? { ...base, position, target: trackingTarget } : { ...base, position };
+  return trackingTarget ? { ...base, rotation: undefined, position, target: trackingTarget } : { ...base, position };
 }

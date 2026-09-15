@@ -1,0 +1,49 @@
+.perspective-selector { display: flex; align-items: center; font-size: 12px; white-space: nowrap; }
+.top-bar .mode-toggle:has(.perspective-selector) { width: fit-content !important; min-width: 0; height: 32px; margin: 0; padding: 0; flex: 0 0 auto; background: transparent; border: 0; }
+.top-bar .perspective-selector .inspector-field { display: flex; align-items: center; gap: 7px; width: max-content; max-width: none; margin: 0; }
+.top-bar .perspective-selector .inspector-dropdown { width: 78px; max-width: none; }
+.top-bar .perspective-selector .inspector-field-label { color: #c7c9cc; font-size: 12px; }
+.top-bar .perspective-selector .inspector-dropdown-trigger { width: 78px; min-width: 78px; min-height: 28px; height: 28px; padding: 5px 7px; color: #e2e3e5; background: #111214; border: 1px solid #3d3f42; border-radius: 3px; font-size: 12px; }
+.top-bar .perspective-selector .inspector-dropdown-trigger:hover { background: #323437; border-color: #5a5d61; }
+.top-bar .perspective-selector .inspector-dropdown-menu { z-index: 10020; background: #111214; border-color: #3d3f42; }
+.top-bar .perspective-selector .inspector-dropdown-option { color: #d8dadd; }
+.top-bar .perspective-selector .inspector-dropdown-option:hover,
+.top-bar .perspective-selector .inspector-dropdown-option[aria-selected="true"] { background: #414347; color: #fff; }
+.top-bar .curve-editor-trigger { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 11px; color: rgb(var(--text-muted-rgb)); background: rgb(255 255 255 / 0.05); border: 1px solid transparent; border-radius: 8px; font-size: 11px; font-weight: 620; white-space: nowrap; }
+.top-bar .curve-editor-trigger:hover { color: rgb(var(--text-rgb)); background: rgb(255 255 255 / 0.08); }
+.top-bar .top-bar-center { gap: 0; }
+.top-bar .mode-toggle:has(.perspective-selector) { margin-right: 0; }
+.top-bar .curve-editor-trigger { margin-left: 0; }
+.curve-editor-backdrop { position: fixed; inset: 0; z-index: 10000; display: grid; place-items: center; background: #0009; padding: 24px; }
+.curve-editor { display: flex; flex-direction: column; width: min(1400px, 96vw); height: min(820px, 90vh); min-height: 360px; overflow: hidden; border: 1px solid #55575a; border-radius: 3px; background: #3b3c3e; color: #d9dbde; box-shadow: 0 16px 45px #0009; font: 12px "Microsoft YaHei", sans-serif; outline: none; }
+.curve-editor button { color: inherit; border: 1px solid #606268; border-radius: 3px; background: #45474b; padding: 5px 9px; cursor: pointer; font: inherit; }
+.curve-editor button:disabled { opacity: .4; cursor: default; }
+.curve-editor button:hover:not(:disabled) { background: #555b63; }
+.curve-editor button:focus-visible, .curve-editor [tabindex="0"]:focus-visible { outline: 2px solid #9bc9fa; outline-offset: 2px; }
+.curve-editor-header { display: flex; align-items: center; gap: 16px; height: 40px; flex-shrink: 0; padding: 0 12px; border-bottom: 1px solid #242527; background: #303133; }
+.curve-editor-header strong { font-size: 14px; }
+.curve-editor-header span { color: #aeb1b5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.curve-editor-header button { margin-left: auto; display: flex; padding: 3px; border: 0; background: transparent; }
+.curve-editor-toolbar { min-height: 43px; display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 7px 12px; border-bottom: 1px solid #292a2b; }
+.curve-editor-toolbar > span { flex: 1; min-width: 160px; color: #aeb1b5; }
+.curve-editor-toolbar button { display: flex; align-items: center; }
+.curve-editor-toolbar label { display: flex; align-items: center; gap: 4px; }
+.curve-editor-body { display: flex; flex: 1; min-height: 0; }
+.curve-editor-channels { width: 166px; flex-shrink: 0; padding: 12px 6px; overflow: auto; background: #343537; border-right: 1px solid #27282a; }
+.curve-editor-channels strong { display: block; padding: 0 9px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.curve-editor-channels button { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 5px 14px; }
+.curve-editor-channels .curve-editor-group { color: #aeb1b5; margin-top: 10px; padding-left: 9px; }
+.curve-editor-channels button[aria-pressed="true"] { background: #484a4d; color: #f1f2f3; }
+.curve-editor-plot { position: relative; flex: 1; min-width: 0; background: #3f4042; }
+.curve-editor-plot svg { width: 100%; height: 100%; display: block; touch-action: none; user-select: none; }
+.curve-editor-plot text { fill: #aeb4bd; font: 11px Consolas, monospace; }
+.curve-grid { stroke: #505155; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.curve-playhead { stroke: #e6d854; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.curve-key { fill: #3a3b3d; stroke: #ffc85c; stroke-width: 1.6; cursor: pointer; vector-effect: non-scaling-stroke; }
+.curve-key:hover, .curve-key:focus { fill: #ffc85c; }
+.curve-tangent-line { stroke: #e1e2e4; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.curve-tangent-handle { fill: #f0f1f2; stroke: #303133; stroke-width: 1; vector-effect: non-scaling-stroke; cursor: grab; }
+.curve-tangent-handle:active { cursor: grabbing; }
+.curve-editor-empty { position: absolute; inset: 35% 12%; color: #ced4dc; text-align: center; pointer-events: none; line-height: 1.8; }
+.curve-editor footer { padding: 9px 12px; background: #292b2f; color: #b2bac4; font-size: 11px; line-height: 1.5; }
+@media (max-width: 700px) { .curve-editor-backdrop { padding: 8px; } .curve-editor { width: 100%; height: 94vh; } .curve-editor-channels { width: 110px; } .curve-editor-toolbar > span { flex-basis: 100%; } }

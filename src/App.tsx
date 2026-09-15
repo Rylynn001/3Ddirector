@@ -1,6 +1,6 @@
 import "./styles/index.css";
 import { useEffect, useState } from "react";
-import { ArrowDown, ArrowRight, BookOpen, Boxes, Check, Clock3, Hand, House, Keyboard, MousePointer2, Plus, Route, Sparkles, Trash2, Users, X } from "lucide-react";
+import { ArrowDown, ArrowRight, BookOpen, Boxes, Check, Clock3, Hand, House, Keyboard, MousePointer2, Plus, Sparkles, Trash2, Users, X } from "lucide-react";
 import { DirectorDeskShell } from "./app/layout/DirectorDeskShell";
 import { DirectorCanvas } from "./editor/canvas/DirectorCanvas";
 import { ViewportSensitivitySettings } from "./editor/canvas/ViewportSensitivitySettings";
@@ -29,6 +29,8 @@ import {
 } from "./editor/performance/performanceBenchmark";
 import { getBenchmarkPerformanceProfile } from "./editor/performance/performanceProfiles";
 import { PerformanceSettings } from "./editor/performance/PerformanceSettings";
+import { CurveEditor } from "./editor/motion/CurveEditor";
+import { InspectorSelectField } from "./editor/panels/InspectorControls";
 
 type AppScreen = "home" | "editor";
 
@@ -190,9 +192,10 @@ function isEditableShortcutTarget(target: EventTarget | null) {
 export default function App() {
   const benchmarkMode = getPerformanceBenchmarkMode(window.location.search);
   const viewMode = useDirectorStore((state) => state.viewMode);
-  const setViewMode = useDirectorStore((state) => state.setViewMode);
-  const motionStudioOpen = useDirectorStore((state) => state.motionStudioOpen);
-  const setMotionStudioOpen = useDirectorStore((state) => state.setMotionStudioOpen);
+  const viewportCameraId = useDirectorStore((state) => state.viewportCameraId);
+  const cameras = useDirectorStore((state) => state.project.cameras);
+  const setViewportCamera = useDirectorStore((state) => state.setViewportCamera);
+  const [curveEditorOpen, setCurveEditorOpen] = useState(false);
   const [directorDeskView, setDirectorDeskView] = useState(createInitialDirectorDeskViewState);
   const { records: directorDesks, activeDeskId, screen } = directorDeskView;
 
@@ -517,38 +520,20 @@ export default function App() {
         </div>
         <div className="top-bar-center">
           <div className="mode-toggle ui-segmented" role="group" aria-label="视角切换">
-            <button
-              className={`mode-toggle-button ui-segmented-item ${viewMode === "director" ? "ui-segmented-item-active" : ""}`}
-              aria-pressed={viewMode === "director"}
-              type="button"
-              onClick={() => setViewMode("director")}
-            >
-              导演视角
-            </button>
-            <button
-              className={`mode-toggle-button ui-segmented-item ${viewMode === "camera" ? "ui-segmented-item-active" : ""}`}
-              aria-label="第一视角"
-              aria-pressed={viewMode === "camera"}
-              title="查看摄影机最终画面"
-              type="button"
-              onClick={() => setViewMode("camera")}
-            >
-              第一视角
-            </button>
+            <div className="perspective-selector">
+              <InspectorSelectField
+                label="透视"
+                ariaLabel="透视相机"
+                value={viewMode === "camera" ? viewportCameraId ?? "" : ""}
+                onChange={(value) => setViewportCamera(value || null)}
+                options={[
+                  { value: "", label: "persp" },
+                  ...cameras.filter((camera) => !camera.isVirtual).map((camera) => ({ value: camera.id, label: camera.name })),
+                ]}
+              />
+            </div>
           </div>
-          <button
-            className={`top-bar-motion-button${motionStudioOpen ? " is-active" : ""}`}
-            type="button"
-            aria-label={motionStudioOpen ? "关闭运镜工作台" : "打开运镜工作台"}
-            aria-pressed={motionStudioOpen}
-            onClick={() => {
-              setViewMode("director");
-              setMotionStudioOpen(!motionStudioOpen);
-            }}
-          >
-            <Route aria-hidden="true" size={15} />
-            运镜
-          </button>
+          <button className="curve-editor-trigger" type="button" onClick={() => setCurveEditorOpen(true)}>曲线编辑器</button>
           <ViewportSensitivitySettings />
           <PerformanceSettings />
         </div>
@@ -567,6 +552,7 @@ export default function App() {
       <DirectorDeskShell>
         <DirectorCanvas />
       </DirectorDeskShell>
+      {curveEditorOpen ? <CurveEditor onClose={() => setCurveEditorOpen(false)} /> : null}
     </div>
   );
 }

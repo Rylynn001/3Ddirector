@@ -39,7 +39,9 @@ import {
   VIEWPORT_CAMERA_FRUSTUM_DEPTH,
   VIEWPORT_CAMERA_FRUSTUM_FRAME_WIDTH,
   VIEWPORT_CAMERA_VISUAL_SCALE,
+  getCameraRigPositionFromViewSnapshot,
 } from "../schema/cameraGeometry";
+import { getCameraPlaybackSnapshot } from "../schema/cameraPlayback";
 import { VIEWPORT_OBJECT_LABEL_VERTICAL_GAP } from "../schema/viewportLabels";
 import type { TransformMode } from "../store/directorStore";
 import { useDirectorStore } from "../store/directorStore";
@@ -452,6 +454,7 @@ function ObjectSceneNode({
       rotation={item.transform.rotation}
       scale={item.transform.scale}
       onClick={(event) => {
+        if (event.altKey) return;
         event.stopPropagation();
         onSelect?.(item);
       }}
@@ -620,6 +623,8 @@ function ViewportCameraRig({
   const groupRef = useRef<Group>(null!);
   const selectObject = useDirectorStore((state) => state.selectObject);
   const updateCamera = useDirectorStore((state) => state.updateCamera);
+  const progress = useDirectorStore((state) => state.cameraMotionProgress);
+  const playing = useDirectorStore((state) => state.cameraMotionPlaying);
   const bodyWireframeLines = useMemo(() => getViewportCameraBodyWireframeLines(), []);
   const cameraHitArea = useMemo(() => getViewportCameraHitArea(), []);
   const cameraLabelY = useMemo(() => getViewportCameraLabelY(), []);
@@ -632,6 +637,19 @@ function ViewportCameraRig({
   useLayoutEffect(() => {
     groupRef.current?.quaternion?.copy?.(cameraQuaternion);
   }, [cameraQuaternion]);
+
+  function showPlaybackPose(time: number) {
+    if (!camera.motionPath?.keyframes.length || !groupRef.current) return;
+    const state = useDirectorStore.getState();
+    const snapshot = getCameraPlaybackSnapshot(camera, state.project.objects, time, state.project.scene);
+    const position = getCameraRigPositionFromViewSnapshot(snapshot);
+    groupRef.current.position?.set?.(...position);
+    groupRef.current.quaternion?.copy?.(getViewportCameraQuaternion(position, snapshot.target));
+    if (snapshot.rotation) groupRef.current.rotation?.set?.(...snapshot.rotation);
+    if (snapshot.scale) groupRef.current.scale?.set?.(...snapshot.scale);
+  }
+  useLayoutEffect(() => { showPlaybackPose(progress); }, [progress, playing]);
+  useEffect(() => subscribeRuntimePlayback(showPlaybackPose), [camera]);
 
   function commitCameraTransformFromViewport() {
     const group = groupRef.current;
@@ -653,6 +671,7 @@ function ViewportCameraRig({
   }
 
   function selectCameraFromViewport(event: ThreeEvent<MouseEvent>) {
+    if (event.altKey) return;
     event.stopPropagation();
     selectObject(object?.id ?? null);
   }

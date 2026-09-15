@@ -196,6 +196,21 @@
   pointer-events: none;
 }
 
+.object-motion-transport__ruler .object-motion-transport__object-waypoint {
+  position: absolute;
+  top: 50%;
+  z-index: 4;
+  width: 6px;
+  min-width: 0;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 1px;
+  background: #f59e0b;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+}
+
 .object-motion-transport__camera-waypoint::-webkit-slider-runnable-track {
   height: 1px;
   background: transparent;
@@ -1087,7 +1102,7 @@
 }
 
 .app-shell .object-motion-transport__editor:has(.object-motion-transport__route-hint) {
-  display: none;
+  display: flex;
 }
 
 .app-shell .object-motion-transport--full:has(.object-motion-transport__route-hint) {

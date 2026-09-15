@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach } from "vitest";
 import { createInitialDirectorState, useDirectorStore } from "../../store/directorStore";
 import { ObjectTreePanel } from "../ObjectTreePanel";
+import { getRuntimePlaybackProgress } from "../../runtime/playbackRuntime";
 
 beforeEach(() => {
   useDirectorStore.setState({
@@ -19,6 +20,18 @@ it("filters the object tree by keyword", async () => {
 
   expect(screen.getByRole("button", { name: "机位01" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "角色01" })).not.toBeInTheDocument();
+});
+
+it("第72帧在层级里来回切换角色和相机保持当前时间", async () => {
+  const user = userEvent.setup();
+  const state = useDirectorStore.getState();
+  state.setCameraMotionProgress(72 / state.project.totalFrames);
+  render(<ObjectTreePanel />);
+  for (const name of ["机位01", "角色01", "机位01", "角色01"]) {
+    await user.click(screen.getByRole("button", { name }));
+    expect(useDirectorStore.getState().cameraMotionProgress).toBe(0.5);
+    expect(getRuntimePlaybackProgress()).toBe(0.5);
+  }
 });
 
 it("shows a centered empty search state when no objects match", async () => {

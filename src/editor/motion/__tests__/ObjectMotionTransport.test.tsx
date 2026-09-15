@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach } from "vitest";
 import { createInitialDirectorState, useDirectorStore } from "../../store/directorStore";
@@ -183,11 +183,16 @@ it("lets users drag either visible route track to pause and seek the shared time
 
   render(<ObjectMotionTransport />);
 
+  expect(screen.queryByRole("slider", { name: "拖动镜头时间轴" })).not.toBeInTheDocument();
+  act(() => useDirectorStore.getState().setActiveCamera(state.project.cameras[0].id));
   fireEvent.change(screen.getByRole("slider", { name: "拖动镜头时间轴" }), { target: { value: "0.3" } });
   expect(useDirectorStore.getState().cameraMotionPlaying).toBe(false);
   expect(useDirectorStore.getState().cameraMotionProgress).toBe(0.3);
 
-  useDirectorStore.getState().setCameraMotionPlaying(true);
+  act(() => {
+    useDirectorStore.getState().selectObject("char_default_a");
+    useDirectorStore.getState().setCameraMotionPlaying(true);
+  });
   fireEvent.change(screen.getByRole("slider", { name: "拖动人物时间轴" }), { target: { value: "0.72" } });
   expect(useDirectorStore.getState().cameraMotionPlaying).toBe(false);
   expect(useDirectorStore.getState().cameraMotionProgress).toBe(0.72);
@@ -254,7 +259,7 @@ it("shows only the compact playback controls while piloting", () => {
   expect(screen.queryByLabelText("镜头与对象移动停留时间轴")).not.toBeInTheDocument();
 });
 
-it("shows camera and character move-hold spans on the shared bottom timeline", () => {
+it("切换选择时只显示对应相机或人物的时间轴", () => {
   const state = useDirectorStore.getState();
   useDirectorStore.setState({
     ...state,
@@ -296,8 +301,11 @@ it("shows camera and character move-hold spans on the shared bottom timeline", (
   render(<ObjectMotionTransport />);
 
   expect(screen.getByLabelText("镜头与对象移动停留时间轴")).toBeInTheDocument();
-  expect(screen.getByTitle(/镜头停留第 .*帧至第 .*帧/)).toBeInTheDocument();
+  expect(screen.queryByTitle(/镜头停留第 .*帧至第 .*帧/)).not.toBeInTheDocument();
   expect(screen.getByTitle(/角色01停留第 .*帧至第 .*帧/)).toBeInTheDocument();
+  act(() => useDirectorStore.getState().setActiveCamera(state.project.cameras[0].id));
+  expect(screen.getByTitle(/镜头停留第 .*帧至第 .*帧/)).toBeInTheDocument();
+  expect(screen.queryByTitle(/角色01停留第 .*帧至第 .*帧/)).not.toBeInTheDocument();
 });
 
 it("keeps recording actions disabled until a character or prop is selected", () => {

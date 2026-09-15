@@ -39,8 +39,8 @@ import { PilotHud } from "../motion/PilotHud";
 import { exitPointerLockSafely, requestPointerLockSafely } from "../motion/pointerLock";
 import { getGroundedLabelY } from "../runtime/mannequin/bodyTypes";
 import { getUE4GroundedLabelY } from "../runtime/ue4Mannequin/ue4MannequinRig";
-import { DirectorKeyboardController } from "./DirectorKeyboardController";
 import { SceneRoot } from "./SceneRoot";
+import { ViewportNavigation } from "./ViewportNavigation";
 import { ViewportAspectOverlay } from "./ViewportAspectOverlay";
 import { ViewportBackground } from "./ViewportBackground";
 import { ViewportToolbar } from "./ViewportToolbar";
@@ -132,6 +132,7 @@ function applySnapshotToCamera(camera: ThreePerspectiveCamera, snapshot: CameraS
   camera.fov = snapshot.fov;
   camera.position.set(...snapshot.position);
   camera.lookAt(...snapshot.target);
+  if (snapshot.rotation) camera.rotation.set(...snapshot.rotation);
   camera.updateProjectionMatrix();
   camera.updateMatrixWorld();
 }
@@ -482,73 +483,6 @@ function CanvasCaptureBridge({
     setViewportCaptureHandler(capture);
     return () => clearViewportCaptureHandler();
   }, [activeCamera, bottomPadding, camera, controlsRef, gl, safeAreaInsets, scene, viewMode, viewportAspectRatio]);
-
-  return null;
-}
-
-function DirectorViewCameraSync({
-  controlsRef,
-  disabled,
-  snapshot,
-  viewMode,
-}: {
-  controlsRef: MutableRefObject<OrbitControlsImpl | null>;
-  disabled?: boolean;
-  snapshot: CameraShotSnapshot;
-  viewMode: "director" | "camera";
-}) {
-  const { camera } = useThree();
-
-  useLayoutEffect(() => {
-    if (viewMode !== "director" || disabled) return;
-
-    const perspectiveCamera = camera as ThreePerspectiveCamera;
-    applySnapshotToCamera(perspectiveCamera, snapshot);
-
-    if (controlsRef.current) {
-      controlsRef.current.target.set(...snapshot.target);
-      controlsRef.current.update();
-    }
-  }, [camera, controlsRef, disabled, snapshot, viewMode]);
-
-  return null;
-}
-
-function CameraViewCameraSync({
-  snapshot,
-  viewMode,
-}: {
-  snapshot: CameraShotSnapshot | undefined;
-  viewMode: "director" | "camera";
-}) {
-  const { camera, scene } = useThree();
-  const trackingStateRef = useRef(createCameraTrackingSmoothingState());
-
-  useLayoutEffect(() => {
-    if (viewMode !== "camera" || !snapshot) return;
-    applySnapshotToCamera(camera as ThreePerspectiveCamera, snapshot);
-  }, [camera, snapshot, viewMode]);
-
-  useFrame(() => {
-    const state = useDirectorStore.getState();
-    if (state.viewMode !== "camera") return;
-    const activeCamera = state.project.cameras.find((item) => item.id === state.project.activeCameraId)
-      ?? state.project.cameras[0];
-    if (!activeCamera) return;
-
-    const playbackSnapshot = getRuntimeCameraPlaybackSnapshot({
-      camera: activeCamera,
-      objects: state.project.objects,
-      progress: getRuntimePlaybackProgress(),
-      scene,
-      sceneSettings: state.project.scene,
-      smoothingState: trackingStateRef.current,
-    });
-    applySnapshotToCamera(camera as ThreePerspectiveCamera, {
-      ...playbackSnapshot,
-      fov: state.finishedShotFov ?? playbackSnapshot.fov,
-    });
-  });
 
   return null;
 }
@@ -941,7 +875,7 @@ export function DirectorCanvas() {
   const openSceneInspector = useDirectorStore((state) => state.openSceneInspector);
   const sceneSettings = useDirectorStore((state) => state.project.scene);
   const activeCamera = useDirectorStore((state) =>
-    state.project.cameras.find((item) => item.id === state.project.activeCameraId) ?? state.project.cameras[0]
+    state.project.cameras.find((item) => item.id === (state.viewMode === "camera" ? state.viewportCameraId ?? state.project.activeCameraId : state.project.activeCameraId)) ?? state.project.cameras[0]
   );
   const cameraMotionPlaying = useDirectorStore((state) => state.cameraMotionPlaying);
   const cameraMotionPlaybackRevision = useDirectorStore((state) => state.cameraMotionPlaybackRevision);
@@ -993,7 +927,8 @@ export function DirectorCanvas() {
     ),
     [sceneObjects]
   );
-  const hasPlayableMotion = (activeCameraMotionPath?.keyframes.length ?? 0) >= 2 || hasObjectMotion;
+  const hasCameraMotion = useDirectorStore((state) => state.project.cameras.some((camera) => (camera.motionPath?.keyframes.length ?? 0) >= 2));
+  const hasPlayableMotion = hasCameraMotion || hasObjectMotion;
   const activeMotionDuration = activeCameraMotionPath?.duration ?? DEFAULT_CAMERA_MOTION_PATH.duration;
   const viewportAspectRatio = useDirectorStore((state) => state.viewportAspectRatio);
   const finishedShotFov = useDirectorStore((state) => state.finishedShotFov);
@@ -1008,10 +943,43 @@ export function DirectorCanvas() {
     : undefined;
   const finishedShotAspectRatio = getViewportAspectRatioValue(viewportAspectRatio) ?? automaticViewportAspect;
   const viewportRuleOfThirdsEnabled = useDirectorStore((state) => state.viewportRuleOfThirdsEnabled);
-  const viewportRotateSensitivity = useDirectorStore((state) => state.viewportRotateSensitivity);
-  const viewportZoomSensitivity = useDirectorStore((state) => state.viewportZoomSensitivity);
   const viewportPanelsCollapsed = useDirectorStore((state) => state.viewportPanelsCollapsed);
   const setViewMode = useDirectorStore((state) => state.setViewMode);
+  const setTransformMode = useDirectorStore((state) => state.setTransformMode);
+  const selectedObjectId = useDirectorStore((state) => state.selectedObjectId);
+  const addObjectMotionKeyframe = useDirectorStore((state) => state.addObjectMotionKeyframe);
+  const addCameraMotionKeyframe = useDirectorStore((state) => state.addCameraMotionKeyframe);
+  useEffect(() => {
+    function handleViewportShortcut(event: KeyboardEvent) {
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[role='dialog'], input:not([type='range']), textarea, select, [contenteditable]:not([contenteditable='false'])")) return;
+      if (event.repeat) return;
+      const state = useDirectorStore.getState();
+      const selected = state.project.objects.find((item) => item.id === state.selectedObjectId);
+      if (event.code === "KeyW" || event.code === "KeyE" || event.code === "KeyR") {
+        event.preventDefault();
+        setTransformMode(event.code === "KeyW" ? "translate" : event.code === "KeyE" ? "rotate" : "scale");
+        return;
+      }
+      if (event.code !== "KeyS") return;
+      if (state.viewMode === "camera" && state.viewportCameraId) {
+        event.preventDefault();
+        if (state.project.objects.some((item) => item.linkedCameraId === state.viewportCameraId && item.locked)) return;
+        state.setCameraMotionPlaying(false);
+        addCameraMotionKeyframe(state.viewportCameraId, state.cameraMotionProgress, viewportCameraSnapshotRef.current);
+        return;
+      }
+      if (!selected) return;
+      event.preventDefault();
+      if (selected.locked) return;
+      state.setCameraMotionPlaying(false);
+      if (selected.kind === "camera" && selected.linkedCameraId) addCameraMotionKeyframe(selected.linkedCameraId, state.cameraMotionProgress);
+      else if (selected.kind !== "panorama") addObjectMotionKeyframe(selected.id, state.cameraMotionProgress);
+    }
+    window.addEventListener("keydown", handleViewportShortcut, true);
+    return () => window.removeEventListener("keydown", handleViewportShortcut, true);
+  }, [addCameraMotionKeyframe, addObjectMotionKeyframe, selectedObjectId, setTransformMode]);
   const setViewportRuleOfThirdsEnabled = useDirectorStore((state) => state.setViewportRuleOfThirdsEnabled);
   const visibleViewportSnapshot =
     viewMode === "camera" && activeCameraView ? activeCameraView : directorViewSnapshot;
@@ -1366,8 +1334,8 @@ export function DirectorCanvas() {
             antialias: contextPerformanceConfig.antialias,
             preserveDrawingBuffer: contextPerformanceConfig.preserveDrawingBuffer,
           }}
-          onPointerMissed={() => {
-            if (!isCameraPiloting) openSceneInspector();
+          onPointerMissed={(event) => {
+            if (!isCameraPiloting && !event.altKey) openSceneInspector();
           }}
           onCreated={({ camera, gl }) => {
             const perspectiveCamera = camera as ThreePerspectiveCamera;
@@ -1410,38 +1378,13 @@ export function DirectorCanvas() {
               userData={{ [HIDE_FROM_VIEWPORT_CAPTURE_KEY]: true }}
             />
           ) : null}
-          {viewMode === "director" ? (
-            <OrbitControls
-              ref={controlsRef}
-              enableDamping
-              enabled={!isCameraPiloting}
-              makeDefault
-              rotateSpeed={viewportRotateSensitivity}
-              target={DEFAULT_DIRECTOR_VIEW_SNAPSHOT.target}
-              zoomSpeed={viewportZoomSensitivity}
-              onChange={(event) => {
-                const perspectiveCamera = event?.target?.object as ThreePerspectiveCamera | undefined;
-                const target = event?.target?.target as Vector3 | undefined;
-                if (!perspectiveCamera || !target) return;
-                updateDirectorViewSnapshot({
-                  fov: perspectiveCamera.fov,
-                  position: [perspectiveCamera.position.x, perspectiveCamera.position.y, perspectiveCamera.position.z],
-                  target: [target.x, target.y, target.z],
-                });
-              }}
-            />
-          ) : null}
-          <DirectorKeyboardController
-            active={viewMode === "director" && !isCameraPiloting && !isCameraPreviewing}
-            controlsRef={controlsRef}
-          />
-          <DirectorViewCameraSync
+          <ViewportNavigation
             controlsRef={controlsRef}
             disabled={isCameraPiloting}
-            snapshot={directorViewSnapshot}
-            viewMode={viewMode}
+            freeSnapshot={directorViewSnapshot}
+            onFreeChange={updateDirectorViewSnapshot}
+            onCameraSnapshot={(snapshot) => { viewportCameraSnapshotRef.current = snapshot; }}
           />
-          <CameraViewCameraSync snapshot={activeCameraView} viewMode={viewMode} />
           <CanvasCaptureBridge
             activeCamera={activeCamera}
             bottomPadding={aspectOverlayBottomPadding}
@@ -1537,7 +1480,10 @@ export function DirectorCanvas() {
           </div>
         );
       })(), document.body) : null}
-      <ObjectMotionTransport />
+      <ObjectMotionTransport onRecordCamera={(cameraId) => {
+        addCameraMotionKeyframe(cameraId, useDirectorStore.getState().cameraMotionProgress,
+          useDirectorStore.getState().viewMode === "camera" ? viewportCameraSnapshotRef.current : undefined);
+      }} />
       {isCameraPiloting ? (
         <PilotHud
           lockedTargetName={lockedPilotTargetName}

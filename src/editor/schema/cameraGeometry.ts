@@ -1,10 +1,15 @@
-import { Vector3 } from "three";
+import { Euler, Matrix4, Vector3 } from "three";
 import type { DirectorCameraShot } from "./directorProject";
 
 export interface CameraViewSnapshot {
   fov: number;
   position: [number, number, number];
   target: [number, number, number];
+}
+
+export function cameraViewRotation(position: [number, number, number], target: [number, number, number]): [number, number, number] {
+  const rotation = new Euler().setFromRotationMatrix(new Matrix4().lookAt(new Vector3(...position), new Vector3(...target), new Vector3(0, 1, 0)));
+  return [rotation.x, rotation.y, rotation.z];
 }
 
 export const VIEWPORT_CAMERA_ASPECT = 16 / 9;

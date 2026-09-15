@@ -31,19 +31,22 @@ import {
   createCameraMotionKeyframe,
   getCameraMotionTimingPlan,
   getCameraMotionSnapshot,
+  getCameraMotionPath,
   normalizeCameraMotionPath,
   retimeCameraMotionKeyframes,
 } from "../schema/cameraMotion";
-import { DEFAULT_FPS, DEFAULT_TOTAL_FRAMES } from "../schema/frameTime";
+import { DEFAULT_FPS, DEFAULT_TOTAL_FRAMES, frameToProgress, progressToFrame } from "../schema/frameTime";
 import type { PosePresetId } from "../schema/poseSchema";
 import { getDirectorObjectFocusTarget } from "../schema/cameraTarget";
 import { DEFAULT_CHARACTER_BODY_TYPE, normalizeBodyType } from "../runtime/mannequin/bodyTypes";
 import {
   DEFAULT_DIRECTOR_CAMERA_VIEW_SNAPSHOT,
   getCameraRigPositionFromViewSnapshot,
+  getCameraViewSnapshotFromShot,
+  cameraViewRotation,
 } from "../schema/cameraGeometry";
 import type { ViewportAspectRatio } from "../schema/viewportAspectRatio";
-import { getObjectMotionSnapshot, normalizeObjectMotionPath } from "../schema/objectMotion";
+import { getObjectMotionSnapshot, getObjectMotionTimingPlan, normalizeObjectMotionPath } from "../schema/objectMotion";
 import {
   DEFAULT_VIEWPORT_ROTATE_SENSITIVITY,
   DEFAULT_VIEWPORT_ZOOM_SENSITIVITY,
@@ -120,6 +123,7 @@ const LOCAL_MODEL_LIBRARY_STORAGE_KEY = "storyai-3d-director-local-model-library
 const DIRECTOR_SCENE_STORAGE_KEY = "storyai-3d-director-desk-demo";
 const DIRECTOR_SCENE_STORAGE_KEY_PREFIX = `${DIRECTOR_SCENE_STORAGE_KEY}:`;
 const DEFAULT_UI_STATE: DirectorUiState = {
+  viewportCameraId: null,
   viewMode: "director",
   selectedObjectId: null,
   selectedObjectIds: [],
@@ -355,6 +359,7 @@ function migrateDirectorProject(project: DirectorProject): DirectorProject {
 function extractPersistedDirectorState(state: DirectorRuntimeState): DirectorState {
   return cloneJsonValue({
     viewMode: state.viewMode,
+    viewportCameraId: state.viewportCameraId,
     selectedObjectId: state.selectedObjectId,
     selectedObjectIds: state.selectedObjectIds,
     selectedCrowdId: state.selectedCrowdId,
@@ -413,6 +418,8 @@ function readPersistedDirectorState(options: DirectorStateOptions = {}): Directo
 
     return {
       viewMode: state.viewMode === "camera" ? "camera" : "director",
+      viewportCameraId: typeof state.viewportCameraId === "string" ? state.viewportCameraId
+        : state.viewMode === "camera" ? state.project.activeCameraId : null,
       selectedObjectId: typeof state.selectedObjectId === "string" ? state.selectedObjectId : null,
       selectedObjectIds: Array.isArray(state.selectedObjectIds)
         ? state.selectedObjectIds.filter((item): item is string => typeof item === "string")
@@ -1183,6 +1190,43 @@ export const useDirectorStore = create<DirectorStore>((set, get) => {
         };
       });
     },
+    updateCurveTangent: (objectId, keyframeId, channel, tangent) =>
+      commitMutation((state) => {
+        const object = state.project.objects.find((item) => item.id === objectId);
+        if (!object || object.locked) return state;
+        if (object.kind === "camera") {
+          return { ...state, project: { ...state.project, cameras: state.project.cameras.map((camera) => {
+            if (camera.id !== object.linkedCameraId) return camera;
+            const path = getCameraMotionPath(camera);
+            const arrivals = getCameraMotionTimingPlan(camera)?.arrivals;
+            return { ...camera, motionPath: { ...path, speedMode: "custom" as const, keyframes: path.keyframes.map((key, index) => ({
+              ...key, time: arrivals?.[index] ?? key.time,
+              tangents: key.id === keyframeId ? { ...key.tangents, [channel]: tangent } : key.tangents,
+            })) } };
+          }) } };
+        }
+        return { ...state, project: { ...state.project, objects: state.project.objects.map((item) => {
+          if (item.id !== objectId) return item;
+          const path = normalizeObjectMotionPath(item.motionPath, item.transform);
+          const duration = (state.project.totalFrames ?? DEFAULT_TOTAL_FRAMES) / (state.project.fps ?? DEFAULT_FPS);
+          const arrivals = getObjectMotionTimingPlan(item, duration)?.arrivals;
+          return { ...item, motionPath: { ...path, speedMode: "custom" as const, keyframes: path.keyframes.map((key, index) => ({
+            ...key, time: arrivals?.[index] ?? key.time, tangents: key.id === keyframeId ? { ...key.tangents, [channel]: tangent } : key.tangents,
+          })) } };
+        }) } };
+      }),
+    setViewportCamera: (cameraId) => {
+      if (cameraId && !get().project.cameras.some((camera) => camera.id === cameraId && !camera.isVirtual)) return;
+      if (cameraId) get().setActiveCamera(cameraId);
+      commitUiMutation((state) => ({
+        ...state,
+        viewportCameraId: cameraId,
+        viewMode: cameraId ? "camera" : "director",
+        cameraMotionPlaying: false,
+        cameraPilotMode: "idle",
+        motionStudioOpen: false,
+      }));
+    },
     setTransformMode: (mode) =>
       commitUiMutation((state) => ({
         ...state,
@@ -1256,6 +1300,7 @@ export const useDirectorStore = create<DirectorStore>((set, get) => {
       commitUiMutation((state) => ({
         ...state,
         viewMode: mode,
+        viewportCameraId: mode === "camera" ? state.project.activeCameraId ?? state.project.cameras[0]?.id ?? null : null,
         cameraMotionPlaying: mode === "camera" ? state.cameraMotionPlaying : false,
         cameraPilotMode: mode === "camera" ? "idle" : state.cameraPilotMode,
         cameraPilotEditKeyframeId: mode === "camera" ? null : state.cameraPilotEditKeyframeId,
@@ -1280,7 +1325,7 @@ export const useDirectorStore = create<DirectorStore>((set, get) => {
           selectedCameraKeyframeId: selectedObject?.kind === "camera" ? null : state.selectedCameraKeyframeId,
           selectedCameraKeyframeIds: selectedObject?.kind === "camera" ? [] : state.selectedCameraKeyframeIds,
           selectedObjectMotionKeyframeId: null,
-          cameraMotionProgress: selectedObject?.kind === "camera" ? 0 : state.cameraMotionProgress,
+          cameraMotionProgress: state.cameraMotionProgress,
           cameraMotionPlaying: false,
           project: {
             ...state.project,
@@ -1516,7 +1561,8 @@ export const useDirectorStore = create<DirectorStore>((set, get) => {
         if (!object || object.kind === "camera" || object.kind === "panorama") return state;
         const motionPath = normalizeObjectMotionPath(object.motionPath, object.transform);
         const normalizedTime = Math.min(1, Math.max(0, time));
-        const existing = motionPath.keyframes.find((item) => Math.abs(item.time - normalizedTime) <= 0.005);
+        const totalFrames = state.project.totalFrames ?? DEFAULT_TOTAL_FRAMES;
+        const existing = motionPath.keyframes.find((item) => progressToFrame(item.time, totalFrames) === progressToFrame(normalizedTime, totalFrames));
         recordedId = existing?.id ?? getNextSequentialId(
           motionPath.keyframes.map((item) => item.id),
           `${objectId}_motion_key_`,
@@ -1529,6 +1575,7 @@ export const useDirectorStore = create<DirectorStore>((set, get) => {
         };
         const keyframe: DirectorObjectMotionKeyframe = {
           id: recordedId,
+          tangents: existing?.tangents,
           time: normalizedTime,
           transform,
           actionPresetId: existing?.actionPresetId ?? object.characterRig?.actionPresetId ?? null,
@@ -1547,7 +1594,10 @@ export const useDirectorStore = create<DirectorStore>((set, get) => {
           project: {
             ...state.project,
             objects: state.project.objects.map((item) =>
-              item.id === objectId ? { ...item, motionPath: { ...motionPath, keyframes } } : item
+              item.id === objectId ? {
+                ...item,
+                motionPath: { ...motionPath, speedMode: "custom", customEasing: [0, 0, 1, 1], keyframes },
+              } : item
             ),
           },
         };
@@ -2486,7 +2536,7 @@ export const useDirectorStore = create<DirectorStore>((set, get) => {
           selectedCrowdId: null,
           selectedCameraKeyframeId: null,
           selectedCameraKeyframeIds: [],
-          cameraMotionProgress: 0,
+          cameraMotionProgress: state.cameraMotionProgress,
           cameraMotionPlaying: false,
         };
       }),
@@ -2562,21 +2612,38 @@ export const useDirectorStore = create<DirectorStore>((set, get) => {
           cameraMotionPlaying: false,
         };
       }),
-    addCameraMotionKeyframe: (cameraId) => {
+    addCameraMotionKeyframe: (cameraId, time, snapshot) => {
       let nextKeyframeId: string | null = null;
 
       commitMutation((state) => {
         const camera = state.project.cameras.find((item) => item.id === cameraId);
         if (!camera) return state;
         const motionPath = normalizeCameraMotionPath(camera.motionPath, camera.target, camera);
-        nextKeyframeId = getNextSequentialId(
+        const totalFrames = state.project.totalFrames ?? DEFAULT_TOTAL_FRAMES;
+        const frameTime = time === undefined ? undefined : frameToProgress(progressToFrame(time, totalFrames), totalFrames);
+        const arrivals = getCameraMotionTimingPlan(camera)?.arrivals;
+        const timedKeyframes = motionPath.keyframes.map((item, index) => ({ ...item, time: arrivals?.[index] ?? item.time }));
+        const existing = frameTime === undefined ? undefined : timedKeyframes.find((item) =>
+          progressToFrame(item.time, totalFrames) === progressToFrame(frameTime, totalFrames)
+        );
+        nextKeyframeId = existing?.id ?? getNextSequentialId(
           motionPath.keyframes.map((item) => item.id),
           `${cameraId}_motion_key_`,
           motionPath.keyframes.length + 1
         );
-        const nextKeyframe = createCameraMotionKeyframe(camera, nextKeyframeId);
-        const keyframes = retimeCameraMotionKeyframes([...motionPath.keyframes, nextKeyframe]);
-        const nextMotionPath = normalizeCameraMotionPath({ ...motionPath, keyframes }, camera.target);
+        const keySnapshot: CameraShotSnapshot | undefined = snapshot ?? (time === undefined ? undefined : getCameraViewSnapshotFromShot(camera));
+        const nextKeyframe = createCameraMotionKeyframe(camera, nextKeyframeId, keySnapshot ? {
+          ...keySnapshot,
+          rotation: keySnapshot.rotation ?? cameraViewRotation(keySnapshot.position, keySnapshot.target),
+        } : undefined);
+        const keyframes = frameTime === undefined
+          ? retimeCameraMotionKeyframes([...motionPath.keyframes, nextKeyframe])
+          : [...timedKeyframes.filter((item) => item.id !== existing?.id), { ...nextKeyframe, tangents: existing?.tangents, time: frameTime }];
+        const nextMotionPath = normalizeCameraMotionPath({
+          ...motionPath,
+          ...(frameTime === undefined ? {} : { speedMode: "custom", easing: "linear", customEasing: [0, 0, 1, 1] }),
+          keyframes,
+        }, camera.target);
 
         return {
           ...state,
@@ -2813,16 +2880,14 @@ export const useDirectorStore = create<DirectorStore>((set, get) => {
         if (!camera) return state;
         const motionPath = normalizeCameraMotionPath(camera.motionPath, camera.target, camera);
         const index = motionPath.keyframes.findIndex((item) => item.id === keyframeId);
-        const keyframes = retimeCameraMotionKeyframes(
-          motionPath.keyframes.filter((item) => item.id !== keyframeId)
-        );
+        const keyframes = motionPath.keyframes.filter((item) => item.id !== keyframeId);
         const nextSelected = keyframes[Math.min(Math.max(index, 0), keyframes.length - 1)] ?? null;
 
         return {
           ...state,
           selectedCameraKeyframeId: nextSelected?.id ?? null,
           selectedCameraKeyframeIds: nextSelected ? [nextSelected.id] : [],
-          cameraMotionProgress: nextSelected?.time ?? 0,
+          cameraMotionProgress: state.cameraMotionProgress,
           cameraMotionPlaying: false,
           project: {
             ...state.project,

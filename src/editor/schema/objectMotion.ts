@@ -12,6 +12,7 @@ import {
   sampleRouteTiming,
 } from "./routeTiming";
 import type { RouteTimingSample } from "./routeTiming";
+import { TRANSFORM_CHANNELS, channelParts, normalizeCurveTangents, sampleCurve } from "./animationCurves";
 
 export const DEFAULT_OBJECT_MOTION_PATH: DirectorObjectMotionPath = {
   interpolation: "smooth",
@@ -73,6 +74,7 @@ export function normalizeObjectMotionPath(
           const keyframe = entry as Partial<DirectorObjectMotionKeyframe>;
           return {
             id: typeof keyframe.id === "string" && keyframe.id ? keyframe.id : `object_motion_${index + 1}`,
+            tangents: normalizeCurveTangents(keyframe.tangents),
             time: clamp(finite(keyframe.time, index)),
             transform: normalizeTransform(keyframe.transform, fallbackTransform),
             actionPresetId: typeof keyframe.actionPresetId === "string" ? keyframe.actionPresetId : null,
@@ -203,7 +205,7 @@ function getPathFacingYaw(path: DirectorObjectMotionPath, progress: number, dura
   return Math.hypot(dx, dz) > 0.000001 ? Math.atan2(dx, dz) : null;
 }
 
-export function getObjectMotionSnapshot(object: DirectorObject, progress: number, duration = 6): DirectorTransform {
+function getBaseObjectMotionSnapshot(object: DirectorObject, progress: number, duration = 6): DirectorTransform {
   const path = normalizeObjectMotionPath(object.motionPath, object.transform);
   if (path.keyframes.length === 0) return cloneTransform(object.transform);
   const p = clamp(progress);
@@ -245,6 +247,21 @@ export function getObjectMotionSnapshot(object: DirectorObject, progress: number
   };
 }
 
+export function getObjectMotionSnapshot(object: DirectorObject, progress: number, duration = 6): DirectorTransform {
+  const result = getBaseObjectMotionSnapshot(object, progress, duration);
+  const path = normalizeObjectMotionPath(object.motionPath, object.transform);
+  if (!path.keyframes.some((key) => key.tangents)) return result;
+  const arrivals = getObjectMotionTimingPlan(object, duration)?.arrivals;
+  for (const channel of TRANSFORM_CHANNELS) {
+    if (!path.keyframes.some((key) => key.tangents?.[channel])) continue;
+    const [property, axis] = channelParts(channel);
+    result[property][axis] = sampleCurve(path.keyframes.map((key, index) => ({
+      time: arrivals?.[index] ?? key.time, value: key.transform[property][axis], tangent: key.tangents?.[channel],
+    })), progress, result[property][axis]);
+  }
+  return result;
+}
+
 export function sampleObjectMotionPath(object: DirectorObject, count = 80, duration = 6) {
   const path = normalizeObjectMotionPath(object.motionPath, object.transform);
   if (path.keyframes.length === 0) return [object.transform.position];
@@ -252,7 +269,7 @@ export function sampleObjectMotionPath(object: DirectorObject, count = 80, durat
   const start = path.keyframes[0].time;
   const end = path.keyframes[path.keyframes.length - 1].time;
   return Array.from({ length: count }, (_, index) =>
-    samplePosition(path, start + (end - start) * (index / (count - 1)), duration)
+    getObjectMotionSnapshot(object, start + (end - start) * (index / (count - 1)), duration).position
   );
 }
 

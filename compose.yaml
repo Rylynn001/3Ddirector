@@ -7,4 +7,4 @@ services:
     container_name: 3d-director
     restart: unless-stopped
     ports:
-      - "${APP_PORT:-81}:80"
+      - "0.0.0.0:${APP_PORT:-81}:80"

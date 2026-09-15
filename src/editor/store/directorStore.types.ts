@@ -68,6 +68,8 @@ export interface PanoramaAssetInput {
 }
 
 export interface CameraShotSnapshot {
+  rotation?: [number, number, number];
+  scale?: [number, number, number];
   fov: number;
   position: [number, number, number];
   target: [number, number, number];
@@ -87,6 +89,7 @@ export interface DirectorStateOptions {
 }
 
 export interface DirectorUiState {
+  viewportCameraId: string | null;
   viewMode: ViewMode;
   selectedObjectId: string | null;
   selectedObjectIds: string[];
@@ -137,6 +140,8 @@ export interface DirectorInternalState {
 }
 
 export interface DirectorActions {
+  updateCurveTangent: (objectId: string, keyframeId: string, channel: import("../schema/animationCurves").TransformChannel, tangent: import("../schema/animationCurves").CurveTangent) => void;
+  setViewportCamera: (cameraId: string | null) => void;
   setViewMode: (mode: ViewMode) => void;
   setTransformMode: (mode: TransformMode) => void;
   setViewportAspectRatio: (ratio: ViewportAspectRatio) => void;
@@ -209,7 +214,7 @@ export interface DirectorActions {
   ) => void;
   selectCameraMotionKeyframe: (keyframeId: string | null) => void;
   setCameraMotionKeyframeSelection: (keyframeIds: string[]) => void;
-  addCameraMotionKeyframe: (cameraId: string) => string | null;
+  addCameraMotionKeyframe: (cameraId: string, time?: number, snapshot?: CameraShotSnapshot) => string | null;
   insertCameraMotionKeyframeAfter: (cameraId: string, keyframeId: string) => string | null;
   recordCameraMotionSnapshot: (
     cameraId: string,

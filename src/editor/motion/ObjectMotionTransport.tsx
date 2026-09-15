@@ -75,18 +75,21 @@ function getRoutePlaybackStatus(
  * progress value so a director can pause the cast, adjust the shot, and
  * continue without losing sync.
  */
-export function ObjectMotionTransport() {
+export function ObjectMotionTransport({ onRecordCamera }: { onRecordCamera?: (cameraId: string) => void } = {}) {
   const progress = useDirectorStore((state) => state.cameraMotionProgress);
   const playing = useDirectorStore((state) => state.cameraMotionPlaying);
   const pilotMode = useDirectorStore((state) => state.cameraPilotMode);
   const selectedObjectId = useDirectorStore((state) => state.selectedObjectId);
   const objects = useDirectorStore((state) => state.project.objects);
+  const cameras = useDirectorStore((state) => state.project.cameras);
+  const viewportCameraId = useDirectorStore((state) => state.viewMode === "camera" ? state.viewportCameraId : null);
   const activeCamera = useDirectorStore((state) =>
     state.project.cameras.find((camera) => camera.id === state.project.activeCameraId)
       ?? state.project.cameras[0]
   );
   const addObjectMotionKeyframe = useDirectorStore((state) => state.addObjectMotionKeyframe);
   const deleteObjectMotionKeyframe = useDirectorStore((state) => state.deleteObjectMotionKeyframe);
+  const deleteCameraMotionKeyframe = useDirectorStore((state) => state.deleteCameraMotionKeyframe);
   const selectObjectMotionKeyframe = useDirectorStore((state) => state.selectObjectMotionKeyframe);
   const selectedCameraKeyframeId = useDirectorStore((state) => state.selectedCameraKeyframeId);
   const selectCameraMotionKeyframe = useDirectorStore((state) => state.selectCameraMotionKeyframe);
@@ -113,8 +116,12 @@ export function ObjectMotionTransport() {
   }, [totalFrames]);
   const isPiloting = pilotMode !== "idle";
   const selectedObject = objects.find(
-    (object) => object.id === selectedObjectId && (object.kind === "character" || object.kind === "prop")
+    (object) => object.id === selectedObjectId && object.kind !== "camera" && object.kind !== "panorama"
   );
+  const selectedSceneObject = objects.find((object) => object.id === selectedObjectId);
+  const recordingCamera = cameras.find((camera) => camera.id === (viewportCameraId ?? selectedSceneObject?.linkedCameraId));
+  const showCameraTimeline = selectedSceneObject?.kind === "camera" || !selectedSceneObject;
+  const showObjectTimeline = Boolean(selectedObject);
   const selectedMotionPath = selectedObject
     ? normalizeObjectMotionPath(selectedObject.motionPath, selectedObject.transform)
     : null;
@@ -128,7 +135,7 @@ export function ObjectMotionTransport() {
     ? getRouteSpans(selectedMotionPath.keyframes.map((keyframe) => keyframe.time), objectTimingPlan)
     : null;
   const hasPlayableObjectMotion =
-    (activeCamera?.motionPath?.keyframes.length ?? 0) >= 2
+    cameras.some((camera) => (camera.motionPath?.keyframes.length ?? 0) >= 2)
     || objects.some(
       (object) => (object.motionPath?.keyframes?.length ?? 0) >= 2 || Boolean(object.characterRig?.actionPresetId)
     );
@@ -300,7 +307,7 @@ export function ObjectMotionTransport() {
               />
             );
           })}
-          {activeCamera && cameraPath ? cameraPath.keyframes.map((keyframe, index) => {
+          {showCameraTimeline && activeCamera && cameraPath ? cameraPath.keyframes.map((keyframe, index) => {
             const waypointFrame = progressToFrame(cameraSpans?.arrivals[index] ?? keyframe.time, totalFrames);
             if (waypointFrame < rulerStartFrame || waypointFrame > rulerEndFrame) return null;
             return (
@@ -324,9 +331,34 @@ export function ObjectMotionTransport() {
                 onPointerCancel={endUndoBatch}
                 onBlur={endUndoBatch}
                 onChange={(event) => moveCameraWaypointToFrame(keyframe.id, Number(event.currentTarget.value))}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  if (activeCamera) deleteCameraMotionKeyframe(activeCamera.id, keyframe.id);
+                }}
               />
             );
           }) : null}
+          {keyframes.map((keyframe, index) => {
+            const frame = progressToFrame(objectSpans?.arrivals[index] ?? keyframe.time, totalFrames);
+            if (frame < rulerStartFrame || frame > rulerEndFrame) return null;
+            return (
+              <button
+                key={keyframe.id}
+                type="button"
+                className="object-motion-transport__object-waypoint"
+                style={{ left: `${((frame - rulerStartFrame) / rulerSpan) * 100}%` }}
+                aria-label={`${selectedObject?.name}关键帧 ${frame}`}
+                title={`第 ${frame} 帧，右键删除`}
+                onClick={() => seekFrame(frame)}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  if (!selectedObject) return;
+                  setPlaying(false);
+                  deleteObjectMotionKeyframe(selectedObject.id, keyframe.id);
+                }}
+              />
+            );
+          })}
           {isCurrentFrameVisible ? <>
             <i
               className="object-motion-transport__ruler-playhead"
@@ -390,7 +422,7 @@ export function ObjectMotionTransport() {
             <strong>镜头与人物时间轴</strong>
             <span><i className="is-move" />移动 <i className="is-hold" />停留 <i className="is-playhead" />当前帧</span>
           </div>
-          {cameraSpans?.moves.length ? (
+          {showCameraTimeline && cameraSpans?.moves.length ? (
             <div className="object-motion-transport__track object-motion-transport__track--camera">
               <span className="object-motion-transport__track-label">
                 <strong>镜头移动</strong>
@@ -428,7 +460,7 @@ export function ObjectMotionTransport() {
               </div>
             </div>
           ) : null}
-          {objectSpans?.moves.length ? (
+          {showObjectTimeline && objectSpans?.moves.length ? (
             <div className="object-motion-transport__track object-motion-transport__track--object">
               <span className="object-motion-transport__track-label" title={selectedObject?.name}>
                 <strong>{selectedObject?.name ?? (selectedObject?.kind === "character" ? "人物" : "道具")}移动</strong>
@@ -470,14 +502,33 @@ export function ObjectMotionTransport() {
       ) : null}
 
       <div className="object-motion-transport__editor">
-        {!isCharacterRoute ? <>
+        <button
+          className="object-motion-transport__play"
+          type="button"
+          disabled={!hasPlayableObjectMotion}
+          aria-label={playing ? "暂停时间轴" : "播放时间轴"}
+          title={playing ? "暂停" : "从起点播放"}
+          onClick={() => {
+            if (playing) setPlaying(false);
+            else { setProgress(0); setPlaying(true); }
+          }}
+        >
+          {playing ? <Pause aria-hidden="true" size={17} /> : <Play aria-hidden="true" size={17} />}
+        </button>
+        {!isCharacterRoute || recordingCamera ? <>
           <button
             className="object-motion-transport__record"
             type="button"
-            disabled={!selectedObject}
-            aria-label={selectedObject ? `${recordLabel}：${selectedObject.name}` : "记录人物或道具动作点"}
+            disabled={!selectedObject && !recordingCamera}
+            aria-label={recordingCamera ? `${recordLabel}：${recordingCamera.name}` : selectedObject ? `${recordLabel}：${selectedObject.name}` : "记录人物或道具动作点"}
             title={recordLabel}
             onClick={() => {
+              if (recordingCamera) {
+                setPlaying(false);
+                if (onRecordCamera) onRecordCamera(recordingCamera.id);
+                else useDirectorStore.getState().addCameraMotionKeyframe(recordingCamera.id, progress);
+                return;
+              }
               if (!selectedObject) return;
               setPlaying(false);
               const recorded = addObjectMotionKeyframe(selectedObject.id, progress);
@@ -505,6 +556,13 @@ export function ObjectMotionTransport() {
                 onClick={() => {
                   selectObjectMotionKeyframe(keyframe.id);
                   seek(objectSpans?.arrivals[index] ?? keyframe.time);
+                }}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  if (selectedObject) {
+                    deleteObjectMotionKeyframe(selectedObject.id, keyframe.id);
+                    selectObjectMotionKeyframe(null);
+                  }
                 }}
               >
                 {index + 1}

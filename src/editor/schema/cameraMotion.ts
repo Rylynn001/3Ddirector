@@ -12,12 +12,17 @@ import {
   sampleRouteTiming,
 } from "./routeTiming";
 import type { RouteTimingSample } from "./routeTiming";
+import { Euler, Vector3 } from "three";
+import { cameraViewRotation } from "./cameraGeometry";
+import { TRANSFORM_CHANNELS, channelParts, normalizeCurveTangents, sampleCurve } from "./animationCurves";
 import {
   normalizeDirectorCameraTargetBodyPart,
   normalizeDirectorCameraTargetFollowMode,
 } from "./semanticBody";
 
 export interface CameraMotionSnapshot {
+  rotation?: [number, number, number];
+  scale?: [number, number, number];
   fov: number;
   position: [number, number, number];
   target: [number, number, number];
@@ -68,6 +73,9 @@ export function normalizeCameraMotionPath(
           const keyframe = item as Partial<DirectorCameraMotionKeyframe>;
           return {
             id: typeof keyframe.id === "string" && keyframe.id ? keyframe.id : `motion_key_${index + 1}`,
+            rotation: keyframe.rotation ? tuple(keyframe.rotation, [0, 0, 0]) : undefined,
+            scale: keyframe.scale ? tuple(keyframe.scale, [1, 1, 1]) : undefined,
+            tangents: normalizeCurveTangents(keyframe.tangents),
             time: clamp(finite(keyframe.time, index)),
             position: tuple(keyframe.position, [0, 2, 8]),
             target: tuple(keyframe.target, fallbackTarget),
@@ -135,6 +143,8 @@ export function createCameraMotionKeyframe(
 ): DirectorCameraMotionKeyframe {
   return {
     id,
+    rotation: snapshot.rotation,
+    scale: snapshot.scale ?? [...camera.transform.scale],
     time: 0,
     position: [...snapshot.position],
     target: [...snapshot.target],
@@ -239,7 +249,7 @@ function applyLegacyEasing(value: number, easing: CameraMotionEasing) {
   return value * value * (3 - 2 * value);
 }
 
-export function getCameraMotionSnapshot(camera: DirectorCameraShot, progress: number): CameraMotionSnapshot {
+function getBaseCameraMotionSnapshot(camera: DirectorCameraShot, progress: number): CameraMotionSnapshot {
   const path = getCameraMotionPath(camera);
   const keyframes = path.keyframes;
   const fallback = {
@@ -247,7 +257,7 @@ export function getCameraMotionSnapshot(camera: DirectorCameraShot, progress: nu
     position: [...camera.transform.position] as [number, number, number],
     target: [...camera.target] as [number, number, number],
   };
-  if (keyframes.length < 2) return fallback;
+  if (keyframes.length === 0) return fallback;
 
   const p = clamp(progress);
   if (p <= keyframes[0].time) {
@@ -295,6 +305,50 @@ export function getCameraMotionSnapshot(camera: DirectorCameraShot, progress: nu
   const fov = linear(from.fov, to.fov, local);
 
   return { fov, position, target };
+}
+
+export function getCameraKeyTransform(key: DirectorCameraMotionKeyframe) {
+  return { position: key.position, rotation: key.rotation ?? cameraViewRotation(key.position, key.target), scale: key.scale ?? [1, 1, 1] as [number, number, number] };
+}
+
+export function getCameraMotionSnapshot(camera: DirectorCameraShot, progress: number): CameraMotionSnapshot {
+  const result = getBaseCameraMotionSnapshot(camera, progress);
+  const path = getCameraMotionPath(camera);
+  if (!path.keyframes.length) return result;
+  const arrivals = getCameraMotionTimingPlan(camera)?.arrivals;
+  const rotation = cameraViewRotation(result.position, result.target);
+  const transform = { position: [...result.position] as [number, number, number], rotation, scale: [...camera.transform.scale] as [number, number, number] };
+  const segment = Math.max(0, path.keyframes.findIndex((key, index) => index + 1 < path.keyframes.length && progress < (arrivals?.[index + 1] ?? path.keyframes[index + 1].time)));
+  const a = path.keyframes[segment], b = path.keyframes[Math.min(segment + 1, path.keyframes.length - 1)];
+  const local = clamp((progress - (arrivals?.[segment] ?? a.time)) / Math.max(1e-8, (arrivals?.[segment + 1] ?? b.time) - (arrivals?.[segment] ?? a.time)));
+  const first = progress <= path.keyframes[0].time, last = progress >= path.keyframes[path.keyframes.length - 1].time;
+  transform.scale = first ? [...getCameraKeyTransform(path.keyframes[0]).scale] : last ? [...getCameraKeyTransform(path.keyframes[path.keyframes.length - 1]).scale]
+    : getCameraKeyTransform(a).scale.map((value, axis) => linear(value, getCameraKeyTransform(b).scale[axis], local)) as [number, number, number];
+  let rotate = path.keyframes.every((key) => key.rotation);
+  if (rotate) {
+    for (let axis = 0; axis < 3; axis++) {
+      rotation[axis] = first ? getCameraKeyTransform(path.keyframes[0]).rotation[axis]
+        : last ? getCameraKeyTransform(path.keyframes[path.keyframes.length - 1]).rotation[axis]
+        : linear(getCameraKeyTransform(a).rotation[axis], getCameraKeyTransform(b).rotation[axis], local);
+    }
+  }
+  for (const channel of TRANSFORM_CHANNELS) {
+    if (!path.keyframes.some((key) => key.tangents?.[channel])) continue;
+    const [property, axis] = channelParts(channel);
+    transform[property][axis] = sampleCurve(path.keyframes.map((key, index) => ({
+      time: arrivals?.[index] ?? key.time, value: getCameraKeyTransform(key)[property][axis], tangent: key.tangents?.[channel],
+    })), progress, transform[property][axis]);
+    if (property === "rotation") rotate = true;
+  }
+  if (rotate) {
+    const distance = new Vector3(...result.position).distanceTo(new Vector3(...result.target));
+    const forward = new Vector3(0, 0, -1).applyEuler(new Euler(...rotation)).multiplyScalar(Math.max(0.1, distance));
+    result.target = forward.add(new Vector3(...transform.position)).toArray();
+    result.rotation = rotation;
+  }
+  result.position = transform.position;
+  result.scale = transform.scale;
+  return result;
 }
 
 export function sampleCameraMotionPath(camera: DirectorCameraShot, count = 64) {

@@ -1,5 +1,5 @@
 import { forwardRef } from "react";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
 import { PerspectiveCamera, Vector3 } from "three";
 import { clearViewportCaptureHandler, requestViewportCapture } from "../../io/captureBridge";
@@ -119,6 +119,8 @@ vi.mock("@react-three/fiber", async () => {
           },
           setClearColor: () => undefined,
           domElement: {
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
             width: 1000,
             height: 700,
             clientWidth: 1000,
@@ -241,6 +243,72 @@ vi.mock("../ViewportBackground", () => ({
 
 import App from "../../../App";
 import { createInitialDirectorState, useDirectorStore } from "../../store/directorStore";
+
+it("透视只列出相机，切换层级选择不会改变视口相机", () => {
+  const state = useDirectorStore.getState();
+  const cameraId = state.project.cameras[0].id;
+  render(<App />);
+  const selector = screen.getByRole("combobox", { name: "透视相机" });
+  expect(selector).toHaveValue("");
+  expect(within(selector).getByRole("option", { name: "persp" })).toBeInTheDocument();
+  expect(within(selector).queryByRole("option", { name: "角色01" })).not.toBeInTheDocument();
+  fireEvent.change(selector, { target: { value: cameraId } });
+  expect(useDirectorStore.getState().viewMode).toBe("camera");
+  act(() => useDirectorStore.getState().selectObject("char_default_a"));
+  expect(selector).toHaveValue(cameraId);
+  fireEvent.keyDown(document.body, { code: "KeyS" });
+  expect(useDirectorStore.getState().project.cameras[0].motionPath?.keyframes).toHaveLength(1);
+  expect(useDirectorStore.getState().project.objects.find((item) => item.id === "char_default_a")?.motionPath?.keyframes ?? []).toHaveLength(0);
+  fireEvent.change(selector, { target: { value: "" } });
+  expect(useDirectorStore.getState().viewMode).toBe("director");
+});
+
+it.each(["", "cam_1"])("记录按钮左侧播放完整时间轴并保持透视选择：%s", (cameraId) => {
+  const state = useDirectorStore.getState();
+  state.addCameraMotionKeyframe("cam_1", 0);
+  state.addCameraMotionKeyframe("cam_1", 1);
+  state.setViewportCamera(cameraId || null);
+  state.setCameraMotionProgress(0.5);
+  render(<App />);
+  const play = screen.getByRole("button", { name: "播放时间轴" });
+  expect(play.nextElementSibling).toHaveClass("object-motion-transport__record");
+  fireEvent.click(play);
+  expect(useDirectorStore.getState().cameraMotionPlaying).toBe(true);
+  expect(useDirectorStore.getState().cameraMotionProgress).toBe(0);
+  expect(screen.getByRole("combobox", { name: "透视相机" })).toHaveValue(cameraId);
+  fireEvent.click(screen.getByRole("button", { name: "暂停时间轴" }));
+  expect(useDirectorStore.getState().cameraMotionPlaying).toBe(false);
+});
+
+it.each(["camera", "character"])("连续打帧：%s 在滑块聚焦后可打相邻帧、覆盖和右键删除", (kind) => {
+  const state = useDirectorStore.getState();
+  const object = state.project.objects.find((item) => item.kind === kind)!;
+  state.selectObject(object.id);
+  state.updateTotalFrames(720);
+  render(<App />);
+  const ruler = screen.getByRole("slider", { name: "帧标尺播放头" });
+  const getKeys = () => {
+    const project = useDirectorStore.getState().project;
+    return kind === "camera"
+      ? project.cameras.find((item) => item.id === object.linkedCameraId)!.motionPath!.keyframes
+      : project.objects.find((item) => item.id === object.id)!.motionPath!.keyframes;
+  };
+  for (const frame of [20, 21, 60, 60]) {
+    fireEvent.change(ruler, { target: { value: String(frame) } });
+    ruler.focus();
+    fireEvent.keyDown(ruler, { code: "KeyS", key: "s" });
+  }
+  expect(getKeys().map((item) => Math.round(item.time * 720))).toEqual([20, 21, 60]);
+  const point = kind === "camera"
+    ? screen.getByRole("slider", { name: "轨迹点 2 帧位置" })
+    : screen.getByRole("button", { name: `${object.name}关键帧 21` });
+  fireEvent.contextMenu(point);
+  expect(getKeys().map((item) => Math.round(item.time * 720))).toEqual([20, 60]);
+  expect(useDirectorStore.getState().cameraMotionProgress).toBeCloseTo(60 / 720);
+  const input = screen.getByRole("spinbutton", { name: "动作总帧数" });
+  fireEvent.keyDown(input, { code: "KeyS", key: "s" });
+  expect(getKeys()).toHaveLength(2);
+});
 
 it("renders a live R3F viewport and director scene controls", () => {
   render(<App />);
