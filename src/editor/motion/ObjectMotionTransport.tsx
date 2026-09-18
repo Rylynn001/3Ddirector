@@ -233,6 +233,7 @@ export function ObjectMotionTransport({ onRecordCamera }: { onRecordCamera?: (ca
     <section
       className="object-motion-transport object-motion-transport--full"
       aria-label="人物和道具动作播放条"
+      onContextMenu={(event) => event.preventDefault()}
     >
       <div className="object-motion-transport__subject" aria-label="当前动作对象">
         <span className="object-motion-transport__subject-icon" aria-hidden="true">
