@@ -19,6 +19,15 @@ beforeEach(() => {
   });
 });
 
+it("独立浏览器关闭导演台后返回首页并停止播放", async () => {
+  render(<App />);
+  act(() => useDirectorStore.getState().setCameraMotionPlaying(true));
+  await userEvent.click(screen.getByRole("button", { name: "关闭" }));
+  expect(screen.getByRole("heading", { name: "选择一个导演台开始摆场景" })).toBeInTheDocument();
+  expect(window.location.search).not.toContain("instanceId");
+  expect(useDirectorStore.getState().cameraMotionPlaying).toBe(false);
+});
+
 it("returns to a real home page that lists director desks 1 through 4", async () => {
   const user = userEvent.setup();
   const timestamp = "2026-07-11T12:00:00.000Z";
@@ -77,9 +86,8 @@ it("renders the director desk header and view mode switch", () => {
 
   expect(screen.getByText("3D导演台")).toBeInTheDocument();
   expect(screen.getByLabelText("当前版本 v0.3.1")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "导演视角" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "第一视角" })).toBeInTheDocument();
-  expect(container.querySelector(".top-bar-center .mode-toggle")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "透视相机" }).closest(".left-sidebar")).toBeInTheDocument();
+  expect(container.querySelector(".top-bar-center")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("帮助")).not.toBeInTheDocument();
   expect(screen.getByLabelText("关闭")).toBeInTheDocument();
 });
@@ -158,16 +166,16 @@ it("switches from director mode to camera mode", async () => {
   const user = userEvent.setup();
   render(<App />);
 
-  const directorButton = screen.getByRole("button", { name: "导演视角" });
-  const cameraButton = screen.getByRole("button", { name: "第一视角" });
-
-  expect(directorButton).toHaveAttribute("aria-pressed", "true");
-  expect(cameraButton).toHaveAttribute("aria-pressed", "false");
-
-  await user.click(cameraButton);
-
-  expect(directorButton).toHaveAttribute("aria-pressed", "false");
-  expect(cameraButton).toHaveAttribute("aria-pressed", "true");
+  const selector = screen.getByRole("button", { name: "透视相机" });
+  expect(selector).toHaveTextContent("persp");
+  await user.click(selector);
+  await user.click(screen.getByRole("option", { name: "机位01" }));
+  expect(useDirectorStore.getState().viewMode).toBe("camera");
+  expect(selector).toHaveTextContent("机位01");
+  await user.click(selector);
+  await user.click(screen.getByRole("option", { name: "persp" }));
+  expect(useDirectorStore.getState().viewMode).toBe("director");
+  expect(selector).toHaveTextContent("persp");
 });
 
 it("supports Cmd/Ctrl+C and Cmd/Ctrl+V to duplicate the selected object", async () => {

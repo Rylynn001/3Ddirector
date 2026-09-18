@@ -645,7 +645,6 @@ function ViewportCameraRig({
     const position = getCameraRigPositionFromViewSnapshot(snapshot);
     groupRef.current.position?.set?.(...position);
     groupRef.current.quaternion?.copy?.(getViewportCameraQuaternion(position, snapshot.target));
-    if (snapshot.rotation) groupRef.current.rotation?.set?.(...snapshot.rotation);
     if (snapshot.scale) groupRef.current.scale?.set?.(...snapshot.scale);
   }
   useLayoutEffect(() => { showPlaybackPose(progress); }, [progress, playing]);

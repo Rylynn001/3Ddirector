@@ -68,6 +68,8 @@ export function ViewportSensitivitySettings() {
         ref={triggerRef}
         className={`viewport-sensitivity-trigger${open ? " is-active" : ""}`}
         type="button"
+        aria-label="视角手感"
+        title="视角手感"
         aria-controls="viewport-sensitivity-popover"
         aria-expanded={open}
         aria-haspopup="dialog"

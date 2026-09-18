@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { Euler, Quaternion } from "three";
 import type { DirectorCameraShot } from "../directorProject";
 import {
   createCameraMotionKeyframe,
@@ -153,5 +154,23 @@ describe("camera motion path", () => {
 
     expect(getCameraMotionSnapshot(shot, 0.5).position).toEqual([5, 0, 0]);
     expect(getCameraMotionSnapshot(shot, 0.59).position).toEqual([5, 0, 0]);
+  });
+
+  it("takes the short rotation path when yaw crosses the signed pi boundary", () => {
+    const shot = camera();
+    shot.motionPath = {
+      ...shot.motionPath!,
+      interpolation: "linear",
+      easing: "linear",
+      keyframes: [
+        { id: "left", time: 0, position: [0, 2, 8], target: [0, 2, 7], fov: 50, rotation: [0, 3.1, 0] },
+        { id: "right", time: 1, position: [0, 2, 8], target: [0, 2, 7], fov: 50, rotation: [0, -3.1, 0] },
+      ],
+    };
+
+    const middle = getCameraMotionSnapshot(shot, 0.5);
+    const first = new Quaternion().setFromEuler(new Euler(0, 3.1, 0));
+    const sampled = new Quaternion().setFromEuler(new Euler(...(middle.rotation ?? [0, 0, 0])));
+    expect(first.angleTo(sampled)).toBeLessThan(0.1);
   });
 });

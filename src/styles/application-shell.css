@@ -1860,3 +1860,21 @@
     flex-wrap: wrap;
   }
 }
+
+/* 顶部只保留工作区入口，视口设置随截图工具排列。 */
+.app-shell .top-bar-actions { grid-column: 3; }
+.app-shell .viewport-toolbar .viewport-sensitivity-trigger,
+.app-shell .viewport-toolbar .performance-settings-trigger { width: 32px; min-width: 32px; height: 32px; padding: 0; gap: 0; background: transparent; }
+.app-shell .viewport-toolbar .viewport-sensitivity-trigger > span,
+.app-shell .viewport-toolbar .performance-settings-trigger > span,
+.app-shell .viewport-toolbar .performance-settings-trigger > small { display: none; }
+.app-shell .viewport-toolbar { top: 16px; height: auto; min-height: 48px; flex-wrap: wrap; max-width: calc(100% - var(--left-sidebar-width) - var(--right-sidebar-width) - 64px); }
+@media (max-width: 1100px) {
+  .app-shell .viewport-toolbar { left: calc((100% + var(--left-sidebar-width) + 48px) / 2); max-width: calc(100% - var(--left-sidebar-width) - 80px); gap: 2px; }
+  .app-shell .viewport-toolbar-button.ui-icon-button,
+  .app-shell .viewport-toolbar .viewport-sensitivity-trigger,
+  .app-shell .viewport-toolbar .performance-settings-trigger { width: 28px; min-width: 28px; height: 28px; }
+}
+@media (max-width: 600px) {
+  .app-shell .viewport-toolbar { top: 8px; left: calc(50% + 24px); width: calc(100% - 64px); max-width: calc(100% - 64px); }
+}

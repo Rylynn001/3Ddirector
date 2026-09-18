@@ -14,6 +14,7 @@ import type { RouteTimingPlan } from "../schema/routeTiming";
 import { DEFAULT_FPS, DEFAULT_TOTAL_FRAMES, formatFrame, frameToProgress, progressToFrame } from "../schema/frameTime";
 import { useDirectorStore } from "../store/directorStore";
 import "./objectMotionTransport.css";
+import { CurveEditor } from "./CurveEditor";
 
 const CURRENT_KEYFRAME_TOLERANCE = 0.005;
 
@@ -76,6 +77,8 @@ function getRoutePlaybackStatus(
  * continue without losing sync.
  */
 export function ObjectMotionTransport({ onRecordCamera }: { onRecordCamera?: (cameraId: string) => void } = {}) {
+  const [curveEditorOpen, setCurveEditorOpen] = useState(false);
+  const curveEditorButton = <button className="curve-editor-trigger" type="button" onClick={() => setCurveEditorOpen(true)}>曲线编辑器</button>;
   const progress = useDirectorStore((state) => state.cameraMotionProgress);
   const playing = useDirectorStore((state) => state.cameraMotionPlaying);
   const pilotMode = useDirectorStore((state) => state.cameraPilotMode);
@@ -96,6 +99,7 @@ export function ObjectMotionTransport({ onRecordCamera }: { onRecordCamera?: (ca
   const updateCameraMotionPath = useDirectorStore((state) => state.updateCameraMotionPath);
   const setProgress = useDirectorStore((state) => state.setCameraMotionProgress);
   const setPlaying = useDirectorStore((state) => state.setCameraMotionPlaying);
+  const restartPlayback = useDirectorStore((state) => state.restartCameraMotionPlayback);
   const beginUndoBatch = useDirectorStore((state) => state.beginUndoBatch);
   const endUndoBatch = useDirectorStore((state) => state.endUndoBatch);
   const updateTotalFrames = useDirectorStore((state) => state.updateTotalFrames);
@@ -416,7 +420,7 @@ export function ObjectMotionTransport({ onRecordCamera }: { onRecordCamera?: (ca
         </div>
       </div>
 
-      {(cameraSpans?.moves.length || objectSpans?.moves.length) ? (
+      {hasPlayableObjectMotion ? (
         <div className="object-motion-transport__tracks" aria-label="镜头与对象移动停留时间轴">
           <div className="object-motion-transport__tracks-heading">
             <strong>镜头与人物时间轴</strong>
@@ -506,14 +510,11 @@ export function ObjectMotionTransport({ onRecordCamera }: { onRecordCamera?: (ca
           className="object-motion-transport__play"
           type="button"
           disabled={!hasPlayableObjectMotion}
-          aria-label={playing ? "暂停时间轴" : "播放时间轴"}
-          title={playing ? "暂停" : "从起点播放"}
-          onClick={() => {
-            if (playing) setPlaying(false);
-            else { setProgress(0); setPlaying(true); }
-          }}
+          aria-label="从起点播放"
+          title="从起点播放"
+          onClick={restartPlayback}
         >
-          {playing ? <Pause aria-hidden="true" size={17} /> : <Play aria-hidden="true" size={17} />}
+          <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 5v14M9 5l11 7-11 7z" /></svg>
         </button>
         {!isCharacterRoute || recordingCamera ? <>
           <button
@@ -538,6 +539,7 @@ export function ObjectMotionTransport({ onRecordCamera }: { onRecordCamera?: (ca
             <MapPinPlus aria-hidden="true" size={15} />
             <span>{recordLabel}</span>
           </button>
+          {curveEditorButton}
           <div
             className="object-motion-transport__keyframes"
             role="group"
@@ -572,7 +574,7 @@ export function ObjectMotionTransport({ onRecordCamera }: { onRecordCamera?: (ca
               <small>{selectedObject ? "还没有动作点" : "选择对象后记录动作"}</small>
             )}
           </div>
-        </> : <span className="object-motion-transport__route-hint">路线点、每段动作和朝向请在右侧“路线”页编辑</span>}
+        </> : <>{curveEditorButton}<span className="object-motion-transport__route-hint">路线点、每段动作和朝向请在右侧“路线”页编辑</span></>}
 
         <button
           className="object-motion-transport__delete"
@@ -591,6 +593,7 @@ export function ObjectMotionTransport({ onRecordCamera }: { onRecordCamera?: (ca
           <span>删除当前点</span>
         </button>
       </div>
+      {curveEditorOpen ? <CurveEditor onClose={() => setCurveEditorOpen(false)} /> : null}
     </section>
   );
 }

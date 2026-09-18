@@ -2,8 +2,8 @@ import "./styles/index.css";
 import { useEffect, useState } from "react";
 import { ArrowDown, ArrowRight, BookOpen, Boxes, Check, Clock3, Hand, House, Keyboard, MousePointer2, Plus, Sparkles, Trash2, Users, X } from "lucide-react";
 import { DirectorDeskShell } from "./app/layout/DirectorDeskShell";
+import { CameraVideoExportButton } from "./editor/io/CameraVideoExportButton";
 import { DirectorCanvas } from "./editor/canvas/DirectorCanvas";
-import { ViewportSensitivitySettings } from "./editor/canvas/ViewportSensitivitySettings";
 import {
   DIRECTOR_DESK_SESSION_OPENED_EVENT,
   initDirectorDeskHostBridge,
@@ -28,9 +28,6 @@ import {
   getPerformanceBenchmarkPlayback,
 } from "./editor/performance/performanceBenchmark";
 import { getBenchmarkPerformanceProfile } from "./editor/performance/performanceProfiles";
-import { PerformanceSettings } from "./editor/performance/PerformanceSettings";
-import { CurveEditor } from "./editor/motion/CurveEditor";
-import { InspectorSelectField } from "./editor/panels/InspectorControls";
 
 type AppScreen = "home" | "editor";
 
@@ -191,11 +188,6 @@ function isEditableShortcutTarget(target: EventTarget | null) {
 
 export default function App() {
   const benchmarkMode = getPerformanceBenchmarkMode(window.location.search);
-  const viewMode = useDirectorStore((state) => state.viewMode);
-  const viewportCameraId = useDirectorStore((state) => state.viewportCameraId);
-  const cameras = useDirectorStore((state) => state.project.cameras);
-  const setViewportCamera = useDirectorStore((state) => state.setViewportCamera);
-  const [curveEditorOpen, setCurveEditorOpen] = useState(false);
   const [directorDeskView, setDirectorDeskView] = useState(createInitialDirectorDeskViewState);
   const { records: directorDesks, activeDeskId, screen } = directorDeskView;
 
@@ -218,6 +210,7 @@ export default function App() {
   }
 
   function backToHome() {
+    useDirectorStore.getState().setCameraMotionPlaying(false);
     const records = ensureDirectorDeskRecords();
     setDirectorDeskView({ records, activeDeskId, screen: "home" });
     updateUrlDirectorDeskInstanceId(null);
@@ -287,6 +280,7 @@ export default function App() {
 
   function handleClose() {
     postDirectorDeskMessageToHost({ type: "storyai:director-desk-close" });
+    backToHome();
   }
 
   useEffect(() => {
@@ -518,26 +512,8 @@ export default function App() {
             </button>
           </div>
         </div>
-        <div className="top-bar-center">
-          <div className="mode-toggle ui-segmented" role="group" aria-label="视角切换">
-            <div className="perspective-selector">
-              <InspectorSelectField
-                label="透视"
-                ariaLabel="透视相机"
-                value={viewMode === "camera" ? viewportCameraId ?? "" : ""}
-                onChange={(value) => setViewportCamera(value || null)}
-                options={[
-                  { value: "", label: "persp" },
-                  ...cameras.filter((camera) => !camera.isVirtual).map((camera) => ({ value: camera.id, label: camera.name })),
-                ]}
-              />
-            </div>
-          </div>
-          <button className="curve-editor-trigger" type="button" onClick={() => setCurveEditorOpen(true)}>曲线编辑器</button>
-          <ViewportSensitivitySettings />
-          <PerformanceSettings />
-        </div>
         <div className="top-bar-actions">
+          <CameraVideoExportButton />
           <button
             className="top-bar-action-button"
             type="button"
@@ -552,7 +528,6 @@ export default function App() {
       <DirectorDeskShell>
         <DirectorCanvas />
       </DirectorDeskShell>
-      {curveEditorOpen ? <CurveEditor onClose={() => setCurveEditorOpen(false)} /> : null}
     </div>
   );
 }

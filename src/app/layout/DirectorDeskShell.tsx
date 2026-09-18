@@ -1,9 +1,13 @@
+import { InspectorSelectField } from "../../editor/panels/InspectorControls";
 import type { ReactNode } from "react";
 import { ObjectTreePanel } from "../../editor/panels/ObjectTreePanel";
 import { RightPanel } from "../../editor/panels/RightPanel";
 import { useDirectorStore } from "../../editor/store/directorStore";
 
 export function DirectorDeskShell({ children }: { children: ReactNode }) {
+  const viewportCameraId = useDirectorStore((state) => state.viewportCameraId);
+  const cameras = useDirectorStore((state) => state.project.cameras);
+  const setViewportCamera = useDirectorStore((state) => state.setViewportCamera);
   const viewportPanelsCollapsed = useDirectorStore((state) => state.viewportPanelsCollapsed);
   const motionStudioOpen = useDirectorStore((state) => state.motionStudioOpen);
   const cameraPilotMode = useDirectorStore((state) => state.cameraPilotMode);
@@ -35,6 +39,18 @@ export function DirectorDeskShell({ children }: { children: ReactNode }) {
         aria-hidden={viewportPanelsCollapsed ? "true" : undefined}
         aria-label="场景"
       >
+        <div className="perspective-selector">
+          <InspectorSelectField
+            label="透视"
+            ariaLabel="透视相机"
+            value={viewMode === "camera" ? viewportCameraId ?? "" : ""}
+            onChange={(value) => setViewportCamera(value || null)}
+            options={[
+              { value: "", label: "persp" },
+              ...cameras.filter((camera) => !camera.isVirtual).map((camera) => ({ value: camera.id, label: camera.name })),
+            ]}
+          />
+        </div>
         <ObjectTreePanel />
       </aside>
       <aside

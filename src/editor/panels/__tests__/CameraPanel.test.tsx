@@ -152,7 +152,7 @@ it("builds and previews a free camera motion path from the motion tab", async ()
   await user.click(screen.getByRole("button", { name: "轨迹" }));
 
   expect(screen.getByRole("status")).toHaveTextContent("还没有摄影机轨迹");
-  await user.click(screen.getByRole("button", { name: "将当前机位添加为轨迹点" }));
+  act(() => useDirectorStore.getState().addCameraMotionKeyframe("cam_1"));
 
   const currentCamera = useDirectorStore.getState().project.cameras[0];
   act(() => {
@@ -161,7 +161,7 @@ it("builds and previews a free camera motion path from the motion tab", async ()
       fov: 38,
     });
   });
-  await user.click(screen.getByRole("button", { name: "将当前机位添加为轨迹点" }));
+  act(() => useDirectorStore.getState().addCameraMotionKeyframe("cam_1"));
 
   const keyframeList = screen.getByRole("list", { name: "摄影机轨迹点" });
   expect(within(keyframeList).getAllByRole("listitem")).toHaveLength(2);

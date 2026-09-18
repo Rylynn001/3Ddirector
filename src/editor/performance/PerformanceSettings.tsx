@@ -89,6 +89,7 @@ export function PerformanceSettings() {
       <button
         ref={triggerRef}
         aria-label={`性能 ${selectedOption.label}`}
+        title={`性能 ${selectedOption.label}`}
         aria-controls="performance-settings-popover"
         aria-expanded={open}
         aria-haspopup="dialog"

@@ -960,7 +960,7 @@
 .app-shell .object-motion-transport--full,
 .app-shell .object-motion-transport--full:has(.object-motion-transport__route-hint) {
   left: calc((100% + var(--left-sidebar-width) - var(--right-sidebar-width)) / 2);
-  grid-template-columns: 96px minmax(230px, 1fr) minmax(92px, auto);
+  grid-template-columns: 96px minmax(0, 1fr) auto;
   width: min(760px, calc(100% - var(--left-sidebar-width) - var(--right-sidebar-width) - 48px));
   min-height: 48px;
   gap: 6px;
@@ -1105,12 +1105,8 @@
   display: flex;
 }
 
-.app-shell .object-motion-transport--full:has(.object-motion-transport__route-hint) {
-  grid-template-columns: 96px minmax(230px, 1fr);
-  width: min(420px, calc(100% - var(--left-sidebar-width) - var(--right-sidebar-width) - 76px));
-}
-
 .app-shell .object-motion-transport__tracks {
+  min-height: 20px;
   gap: 2px;
   padding: 3px 2px 0;
 }
@@ -1134,15 +1130,11 @@
 }
 
 @media (max-width: 920px) {
-  .app-shell .object-motion-transport--full {
+  .app-shell .object-motion-transport--full,
+  .app-shell .object-motion-transport--full:has(.object-motion-transport__route-hint) {
     left: calc((100% + var(--left-sidebar-width)) / 2);
     grid-template-columns: minmax(0, 1fr);
     width: min(560px, calc(100% - var(--left-sidebar-width) - 48px));
-  }
-
-  .app-shell .object-motion-transport--full:has(.object-motion-transport__route-hint) {
-    grid-template-columns: minmax(0, 1fr);
-    width: min(420px, calc(100% - var(--left-sidebar-width) - 48px));
   }
 
   .app-shell .object-motion-transport__subject {

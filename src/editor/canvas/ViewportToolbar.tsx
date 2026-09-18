@@ -1,3 +1,6 @@
+import { Fragment } from "react";
+import { ViewportSensitivitySettings } from "./ViewportSensitivitySettings";
+import { PerformanceSettings } from "../performance/PerformanceSettings";
 import {
   useEffect,
   useLayoutEffect,
@@ -779,6 +782,13 @@ export function ViewportToolbar({
           </button>
         </div>
         {actions.slice(3).map((action) => {
+          if (action.label === "十二方位截图") {
+            return <Fragment key={action.label}>
+              {renderActionButton(action)}
+              <ViewportSensitivitySettings />
+              <PerformanceSettings />
+            </Fragment>;
+          }
           if (action.label !== "模型库") {
             return renderActionButton(action);
           }

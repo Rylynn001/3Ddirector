@@ -52,6 +52,30 @@ it("keeps seconds out of the bottom transport", () => {
   expect(screen.queryByText("当前动作时间")).not.toBeInTheDocument();
 });
 
+it("从起点播放始终重启，继续播放按钮独立暂停和恢复", () => {
+  const state = useDirectorStore.getState();
+  const camera = state.project.cameras[0];
+  state.addCameraMotionKeyframe(camera.id, 0);
+  state.addCameraMotionKeyframe(camera.id, 1);
+  state.setCameraMotionProgress(0.5);
+  render(<ObjectMotionTransport />);
+  const start = screen.getByRole("button", { name: "从起点播放" });
+  fireEvent.click(start);
+  expect(useDirectorStore.getState().cameraMotionPlaying).toBe(true);
+  expect(useDirectorStore.getState().cameraMotionProgress).toBe(0);
+  const revision = useDirectorStore.getState().cameraMotionPlaybackRevision;
+  act(() => state.setCameraMotionProgress(0.4));
+  fireEvent.click(start);
+  expect(useDirectorStore.getState().cameraMotionProgress).toBe(0);
+  expect(useDirectorStore.getState().cameraMotionPlaying).toBe(true);
+  expect(useDirectorStore.getState().cameraMotionPlaybackRevision).toBe(revision + 1);
+  act(() => state.setCameraMotionProgress(0.3));
+  fireEvent.click(screen.getByRole("button", { name: "暂停人物和物品动作" }));
+  expect(useDirectorStore.getState().cameraMotionPlaying).toBe(false);
+  fireEvent.click(screen.getByRole("button", { name: "播放人物和物品动作" }));
+  expect(useDirectorStore.getState().cameraMotionProgress).toBe(0.3);
+});
+
 it("shows a frame ruler and updates its range and frame rate", () => {
   render(<ObjectMotionTransport />);
 

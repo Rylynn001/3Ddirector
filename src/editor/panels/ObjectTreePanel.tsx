@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import { Box, Camera, ChevronDown, ChevronRight, Eye, EyeOff, Layers3, Lock, Search, Unlock, User, Users } from "lucide-react";
 import type { DirectorObject, DirectorObjectKind } from "../schema/directorProject";
 import { useDirectorStore } from "../store/directorStore";
+import { CameraVideoExportButton } from "../io/CameraVideoExportButton";
 
 type SceneTreePreviewItem = {
   id: string;
@@ -362,6 +363,7 @@ export function ObjectTreePanel() {
                         </div>
                         {item.object ? (
                           <>
+                            {item.object.linkedCameraId && <CameraVideoExportButton cameraId={item.object.linkedCameraId} compact />}
                             <button
                               className="object-flag-button object-icon-flag-button"
                               type="button"

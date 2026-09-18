@@ -58,9 +58,9 @@ vi.mock("@react-three/fiber", async () => {
     }: {
       children: React.ReactNode;
       className?: string;
-      onPointerMissed?: () => void;
+      onPointerMissed?: (event: MouseEvent) => void;
     }) => (
-      <div className={className} data-testid="mock-r3f-canvas" onClick={() => onPointerMissed?.()}>
+      <div className={className} data-testid="mock-r3f-canvas" onClick={(event) => onPointerMissed?.(event.nativeEvent)}>
         {children}
       </div>
     ),
@@ -246,20 +246,23 @@ import { createInitialDirectorState, useDirectorStore } from "../../store/direct
 
 it("透视只列出相机，切换层级选择不会改变视口相机", () => {
   const state = useDirectorStore.getState();
-  const cameraId = state.project.cameras[0].id;
+  const cameraName = state.project.cameras[0].name;
   render(<App />);
-  const selector = screen.getByRole("combobox", { name: "透视相机" });
-  expect(selector).toHaveValue("");
-  expect(within(selector).getByRole("option", { name: "persp" })).toBeInTheDocument();
-  expect(within(selector).queryByRole("option", { name: "角色01" })).not.toBeInTheDocument();
-  fireEvent.change(selector, { target: { value: cameraId } });
+  const selector = screen.getByRole("button", { name: "透视相机" });
+  expect(selector).toHaveTextContent("persp");
+  fireEvent.click(selector);
+  const options = screen.getByRole("listbox", { name: "透视相机" });
+  expect(within(options).getByRole("option", { name: "persp" })).toBeInTheDocument();
+  expect(within(options).queryByRole("option", { name: "角色01" })).not.toBeInTheDocument();
+  fireEvent.click(within(options).getByRole("option", { name: cameraName }));
   expect(useDirectorStore.getState().viewMode).toBe("camera");
   act(() => useDirectorStore.getState().selectObject("char_default_a"));
-  expect(selector).toHaveValue(cameraId);
+  expect(selector).toHaveTextContent(cameraName);
   fireEvent.keyDown(document.body, { code: "KeyS" });
   expect(useDirectorStore.getState().project.cameras[0].motionPath?.keyframes).toHaveLength(1);
   expect(useDirectorStore.getState().project.objects.find((item) => item.id === "char_default_a")?.motionPath?.keyframes ?? []).toHaveLength(0);
-  fireEvent.change(selector, { target: { value: "" } });
+  fireEvent.click(selector);
+  fireEvent.click(screen.getByRole("option", { name: "persp" }));
   expect(useDirectorStore.getState().viewMode).toBe("director");
 });
 
@@ -270,13 +273,13 @@ it.each(["", "cam_1"])("记录按钮左侧播放完整时间轴并保持透视�
   state.setViewportCamera(cameraId || null);
   state.setCameraMotionProgress(0.5);
   render(<App />);
-  const play = screen.getByRole("button", { name: "播放时间轴" });
+  const play = screen.getByRole("button", { name: "从起点播放" });
   expect(play.nextElementSibling).toHaveClass("object-motion-transport__record");
   fireEvent.click(play);
   expect(useDirectorStore.getState().cameraMotionPlaying).toBe(true);
   expect(useDirectorStore.getState().cameraMotionProgress).toBe(0);
-  expect(screen.getByRole("combobox", { name: "透视相机" })).toHaveValue(cameraId);
-  fireEvent.click(screen.getByRole("button", { name: "暂停时间轴" }));
+  expect(screen.getByRole("button", { name: "透视相机" })).toHaveTextContent(cameraId ? "机位01" : "persp");
+  fireEvent.click(screen.getByRole("button", { name: "暂停人物和物品动作" }));
   expect(useDirectorStore.getState().cameraMotionPlaying).toBe(false);
 });
 

@@ -12,7 +12,7 @@ import {
   sampleRouteTiming,
 } from "./routeTiming";
 import type { RouteTimingSample } from "./routeTiming";
-import { Euler, Vector3 } from "three";
+import { Euler, Quaternion, Vector3 } from "three";
 import { cameraViewRotation } from "./cameraGeometry";
 import { TRANSFORM_CHANNELS, channelParts, normalizeCurveTangents, sampleCurve } from "./animationCurves";
 import {
@@ -249,6 +249,22 @@ function applyLegacyEasing(value: number, easing: CameraMotionEasing) {
   return value * value * (3 - 2 * value);
 }
 
+function interpolateRotation(from: [number, number, number], to: [number, number, number], progress: number): [number, number, number] {
+  const quaternion = new Quaternion()
+    .setFromEuler(new Euler(...from))
+    .slerp(new Quaternion().setFromEuler(new Euler(...to)), progress);
+  const euler = new Euler().setFromQuaternion(quaternion);
+  return [euler.x, euler.y, euler.z];
+}
+
+function unwrapAngles(values: number[]) {
+  return values.reduce<number[]>((result, value, index) => {
+    if (index === 0) return [value];
+    result.push(result[index - 1] + (((value - result[index - 1] + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI));
+    return result;
+  }, []);
+}
+
 function getBaseCameraMotionSnapshot(camera: DirectorCameraShot, progress: number): CameraMotionSnapshot {
   const path = getCameraMotionPath(camera);
   const keyframes = path.keyframes;
@@ -326,17 +342,21 @@ export function getCameraMotionSnapshot(camera: DirectorCameraShot, progress: nu
     : getCameraKeyTransform(a).scale.map((value, axis) => linear(value, getCameraKeyTransform(b).scale[axis], local)) as [number, number, number];
   let rotate = path.keyframes.every((key) => key.rotation);
   if (rotate) {
-    for (let axis = 0; axis < 3; axis++) {
-      rotation[axis] = first ? getCameraKeyTransform(path.keyframes[0]).rotation[axis]
-        : last ? getCameraKeyTransform(path.keyframes[path.keyframes.length - 1]).rotation[axis]
-        : linear(getCameraKeyTransform(a).rotation[axis], getCameraKeyTransform(b).rotation[axis], local);
-    }
+    const fromRotation = getCameraKeyTransform(a).rotation;
+    const toRotation = getCameraKeyTransform(b).rotation;
+    const interpolated = first ? getCameraKeyTransform(path.keyframes[0]).rotation
+      : last ? getCameraKeyTransform(path.keyframes[path.keyframes.length - 1]).rotation
+      : interpolateRotation(fromRotation, toRotation, local);
+    rotation.splice(0, 3, ...interpolated);
   }
   for (const channel of TRANSFORM_CHANNELS) {
     if (!path.keyframes.some((key) => key.tangents?.[channel])) continue;
     const [property, axis] = channelParts(channel);
+    const values = property === "rotation"
+      ? unwrapAngles(path.keyframes.map((key) => getCameraKeyTransform(key)[property][axis]))
+      : path.keyframes.map((key) => getCameraKeyTransform(key)[property][axis]);
     transform[property][axis] = sampleCurve(path.keyframes.map((key, index) => ({
-      time: arrivals?.[index] ?? key.time, value: getCameraKeyTransform(key)[property][axis], tangent: key.tangents?.[channel],
+      time: arrivals?.[index] ?? key.time, value: values[index], tangent: key.tangents?.[channel],
     })), progress, transform[property][axis]);
     if (property === "rotation") rotate = true;
   }

@@ -1,4 +1,4 @@
-import { Camera, Download, Eye, Images, Pause, Play, Plus, Route, Send, Trash2, Waypoints, X, ZoomIn, ZoomOut } from "lucide-react";
+import { Camera, Download, Eye, Images, Pause, Play, Send, Trash2, Waypoints, X, ZoomIn, ZoomOut } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   InspectorAxisGroup,
@@ -15,12 +15,11 @@ import { getDirectorObjectFocusTarget, isCameraFocusableObject } from "../schema
 import type { DirectorCameraCapture } from "../schema/directorProject";
 import { getCameraMotionPath, getCameraMotionTimingPlan } from "../schema/cameraMotion";
 import { useDirectorStore } from "../store/directorStore";
+import { CameraVideoExportButton } from "../io/CameraVideoExportButton";
 
 const VIEWER_ZOOM_MIN = 0.25;
 const VIEWER_ZOOM_MAX = 5;
 const VIEWER_ZOOM_STEP = 0.25;
-const CAMERA_MOTION_DURATION_MIN = 0.5;
-const CAMERA_MOTION_DURATION_MAX = 30;
 const CAMERA_MOTION_FOV_MIN = 10;
 const CAMERA_MOTION_FOV_MAX = 120;
 
@@ -40,7 +39,6 @@ export function CameraPanel() {
   const [viewerScale, setViewerScale] = useState(1);
   const [viewerOffset, setViewerOffset] = useState({ x: 0, y: 0 });
   const [viewerDragging, setViewerDragging] = useState(false);
-  const [motionDurationDraft, setMotionDurationDraft] = useState("6");
   const [motionFovDraft, setMotionFovDraft] = useState("50");
   const viewerDragStateRef = useRef<{
     startX: number;
@@ -92,7 +90,6 @@ export function CameraPanel() {
     motionPath.keyframes.find((item) => item.id === selectedCameraKeyframeId) ?? motionPath.keyframes[0] ?? null;
 
   useEffect(() => {
-    setMotionDurationDraft(String(motionPath.duration));
   }, [currentCamera.id, motionPath.duration]);
 
   useEffect(() => {
@@ -294,13 +291,6 @@ export function CameraPanel() {
     });
   }
 
-  function handleAddMotionKeyframe() {
-    const keyframeId = addCameraMotionKeyframe(currentCamera.id);
-    if (!keyframeId) return;
-    setActiveTab("motion");
-    setViewMode("director");
-  }
-
   function handleOpenMotionTab() {
     setActiveTab("motion");
     setViewMode("director");
@@ -334,15 +324,6 @@ export function CameraPanel() {
     updateCameraMotionKeyframe(currentCamera.id, selectedMotionKeyframe.id, {
       position: replaceAxis(selectedMotionKeyframe.position, axis, Number(value)),
     });
-  }
-
-  function commitMotionDuration(value: string) {
-    const parsed = Number(value);
-    const nextDuration = Number.isFinite(parsed)
-      ? clampNumber(parsed, CAMERA_MOTION_DURATION_MIN, CAMERA_MOTION_DURATION_MAX)
-      : motionPath.duration;
-    updateCameraMotionPath(currentCamera.id, { duration: nextDuration });
-    setMotionDurationDraft(String(nextDuration));
   }
 
   function commitSelectedMotionFov(value: string) {
@@ -567,18 +548,7 @@ export function CameraPanel() {
   function renderMotionEditor() {
     return (
       <div className="camera-motion-tab">
-        <div className="camera-motion-intro">
-          <span className="camera-motion-intro-icon"><Route aria-hidden="true" size={18} /></span>
-          <div>
-            <h3>自由摄影机轨迹</h3>
-            <p>先移动当前机位，再添加轨迹点；橙色轨迹点可直接在 3D 视口中拖动。</p>
-          </div>
-        </div>
 
-        <button className="camera-motion-add-button" type="button" onClick={handleAddMotionKeyframe}>
-          <Plus aria-hidden="true" size={15} />
-          将当前机位添加为轨迹点
-        </button>
 
         {motionPath.keyframes.length === 0 ? (
           <div className="camera-motion-empty" role="status">
@@ -588,19 +558,6 @@ export function CameraPanel() {
           </div>
         ) : (
           <>
-            <InspectorRangeNumberField
-              label="镜头时长"
-              rangeAriaLabel="摄影机轨迹时长滑杆"
-              numberAriaLabel="摄影机轨迹时长"
-              min="0.5"
-              max="30"
-              step="0.1"
-              value={motionDurationDraft}
-              onValueChange={commitMotionDuration}
-              onRangeChange={commitMotionDuration}
-              onNumberBlur={commitMotionDuration}
-              onNumberChange={setMotionDurationDraft}
-            />
             <InspectorSelectField
               label="路径插值"
               ariaLabel="摄影机路径插值"
@@ -716,6 +673,7 @@ export function CameraPanel() {
         { label: "摄像机截图", active: activeTab === "captures", onClick: () => setActiveTab("captures") },
       ]}
     >
+      <CameraVideoExportButton cameraId={currentCamera.id} />
       {activeTab === "properties" ? (
         <>
           <InspectorTextField

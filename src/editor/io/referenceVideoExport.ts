@@ -7,6 +7,8 @@ export interface ReferenceVideoExportOptions {
 
 export interface ReferenceVideoExportRequest extends ReferenceVideoExportOptions {
   fileName: string;
+  cameraId?: string;
+  signal?: AbortSignal;
 }
 
 export interface ReferenceVideoExportResult {

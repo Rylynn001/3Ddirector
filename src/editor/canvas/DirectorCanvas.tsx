@@ -490,9 +490,11 @@ function CanvasCaptureBridge({
 function PlaybackCameraSync({
   snapshot,
   fovOverride,
+  cameraId,
 }: {
   snapshot: CameraShotSnapshot | undefined;
   fovOverride: number | null;
+  cameraId?: string | null;
 }) {
   const { camera, scene } = useThree();
   const trackingStateRef = useRef(createCameraTrackingSmoothingState());
@@ -506,7 +508,7 @@ function PlaybackCameraSync({
 
   useFrame(() => {
     const state = useDirectorStore.getState();
-    const activeCamera = state.project.cameras.find((item) => item.id === state.project.activeCameraId)
+    const activeCamera = state.project.cameras.find((item) => item.id === (cameraId ?? state.project.activeCameraId))
       ?? state.project.cameras[0];
     if (!activeCamera) return;
     const playbackSnapshot = getRuntimeCameraPlaybackSnapshot({
@@ -580,12 +582,14 @@ function ViewportGizmoOverlay({
   dpr,
   onSnapshotChange,
   rightOffset = GIZMO_EDGE_PADDING,
+  topOffset = GIZMO_EDGE_PADDING,
   snapshot,
 }: {
   antialias: boolean;
   dpr: number | [number, number];
   onSnapshotChange: (snapshot: CameraShotSnapshot) => void;
   rightOffset?: number;
+  topOffset?: number;
   snapshot: CameraShotSnapshot;
 }) {
   function selectAxisDirection(direction: [number, number, number]) {
@@ -593,7 +597,7 @@ function ViewportGizmoOverlay({
   }
 
   return (
-    <div className="viewport-gizmo-overlay" aria-label="3D视口原生坐标控件" style={{ right: `${rightOffset}px` }}>
+    <div className="viewport-gizmo-overlay" aria-label="3D视口原生坐标控件" style={{ right: `${rightOffset}px`, top: `${topOffset}px` }}>
       <Canvas
         key={`gizmo-${antialias ? "aa" : "no-aa"}`}
         className="viewport-gizmo-canvas"
@@ -909,6 +913,8 @@ export function DirectorCanvas() {
   const [toolbarHeight, setToolbarHeight] = useState(DEFAULT_VIEWPORT_TOOLBAR_HEIGHT);
   const [referenceVideoQuality, setReferenceVideoQuality] = useState<"720p" | "1080p">("720p");
   const [referenceVideoRendering, setReferenceVideoRendering] = useState(false);
+  const [exportCameraId, setExportCameraId] = useState<string | null>(null);
+  const cameras = useDirectorStore((state) => state.project.cameras);
   const [automaticViewportAspect, setAutomaticViewportAspect] = useState(16 / 9);
   const isCameraPiloting = cameraPilotMode !== "idle";
   const activeCameraMotionPath = useMemo(
@@ -952,7 +958,7 @@ export function DirectorCanvas() {
   useEffect(() => {
     function handleViewportShortcut(event: KeyboardEvent) {
       if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
-      const target = event.target as HTMLElement | null;
+      const target = event.target instanceof Element ? event.target : null;
       if (target?.closest("[role='dialog'], input:not([type='range']), textarea, select, [contenteditable]:not([contenteditable='false'])")) return;
       if (event.repeat) return;
       const state = useDirectorStore.getState();
@@ -1126,28 +1132,40 @@ export function DirectorCanvas() {
   }, []);
 
   useEffect(() => {
-    setReferenceVideoExportHandler(async ({ fileName, fps, quality }) => {
+    setReferenceVideoExportHandler(async ({ fileName, fps, quality, cameraId, signal }) => {
       if (mediaExportInProgressRef.current) throw new Error("已有导出任务正在进行，请稍后再试");
+      const state = useDirectorStore.getState();
+      const shot = state.project.cameras.find((item) => item.id === (cameraId ?? state.project.activeCameraId));
+      if (!shot) throw new Error("没有可导出的机位");
+      signal?.throwIfAborted();
+      const mimeType = getSupportedReferenceVideoMimeType();
+      if (!mimeType) throw new Error("当前浏览器不支持 MP4 导出，请使用最新版 Chrome 或 Edge");
+      const duration = state.project.totalFrames / state.project.fps;
       mediaExportInProgressRef.current = true;
       const originalProgress = getRuntimePlaybackProgress();
-      const originalPlaying = useDirectorStore.getState().cameraMotionPlaying;
-      flushSync(() => {
-        setReferenceVideoQuality(quality);
-        setReferenceVideoRendering(true);
-      });
+      const originalPlaying = state.cameraMotionPlaying;
+      let stream: MediaStream | undefined;
+      let recorder: MediaRecorder | undefined;
       try {
+        flushSync(() => {
+          setCameraMotionPlaying(false);
+          setCameraMotionProgress(0);
+          setExportCameraId(shot.id);
+          setReferenceVideoQuality(quality);
+          setReferenceVideoRendering(true);
+        });
         const startedWaitingAt = performance.now();
         while (!referenceVideoCanvasRef.current && performance.now() - startedWaitingAt < 2000) {
+          signal?.throwIfAborted();
           await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
         }
         const canvas = referenceVideoCanvasRef.current;
-        const mimeType = getSupportedReferenceVideoMimeType();
-        if (!canvas || !mimeType || !activeCamera || !activeCameraMotionPath || activeCameraMotionPath.keyframes.length < 2) {
+        if (!canvas) {
           throw new Error("当前浏览器无法导出参考视频");
         }
 
-        const stream = canvas.captureStream(fps);
-        const recorder = new MediaRecorder(stream, {
+        stream = canvas.captureStream(fps);
+        recorder = new MediaRecorder(stream, {
           mimeType,
           videoBitsPerSecond: quality === "1080p" ? 12_000_000 : 6_000_000,
         });
@@ -1160,42 +1178,56 @@ export function DirectorCanvas() {
         recorder.addEventListener("dataavailable", (event) => {
           if (event.data.size > 0) chunks.push(event.data);
         });
-        const stopped = new Promise<void>((resolve, reject) => {
-          recorder.addEventListener("stop", () => resolve(), { once: true });
-          recorder.addEventListener("error", () => reject(new Error("参考视频录制失败")), { once: true });
+        let recordingError: Error | null = null;
+        const stopped = new Promise<void>((resolve) => {
+          recorder!.addEventListener("stop", () => resolve(), { once: true });
+          recorder!.addEventListener("error", () => { recordingError = new Error("参考视频录制失败"); resolve(); }, { once: true });
         });
 
-        setCameraMotionPlaying(false);
-        setCameraMotionProgress(0);
         await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+        signal?.throwIfAborted();
         recorder.start(250);
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-        setCameraMotionPlaying(true);
-        await new Promise<void>((resolve) => window.setTimeout(resolve, activeMotionDuration * 1000 + 120));
-        setCameraMotionPlaying(false);
-        setCameraMotionProgress(1);
+        // 导出使用独立时钟，静止机位也能录制整段场景，且不受循环播放影响。
+        await new Promise<void>((resolve, reject) => {
+          const start = performance.now();
+          function tick(now: number) {
+            if (signal?.aborted) { reject(new DOMException("已取消导出", "AbortError")); return; }
+            if (recordingError) { reject(recordingError); return; }
+            const progress = Math.min(1, (now - start) / (duration * 1000));
+            setCameraMotionProgress(progress);
+            if (progress >= 1) resolve();
+            else requestAnimationFrame(tick);
+          }
+          requestAnimationFrame(tick);
+        });
+        await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
         recorder.stop();
         await stopped;
-        stream.getTracks().forEach((track) => track.stop());
+        if (recordingError) throw recordingError;
 
         const blob = new Blob(chunks, { type: recordedMimeType });
         if (blob.size === 0) throw new Error("MP4 录制结果为空，请重新导出");
         return {
           blob,
-          durationSeconds: activeMotionDuration,
+          durationSeconds: duration,
           fileName,
           height: canvas.height,
           mimeType: recordedMimeType,
           width: canvas.width,
         };
       } finally {
+        if (recorder && recorder.state !== "inactive") recorder.stop();
+        stream?.getTracks().forEach((track) => track.stop());
         restoreMediaExportPlayback(
           { playing: originalPlaying, progress: originalProgress },
           setCameraMotionPlaying,
           setCameraMotionProgress
         );
         referenceVideoCanvasRef.current = null;
-        setReferenceVideoRendering(false);
+        flushSync(() => {
+          setReferenceVideoRendering(false);
+          setExportCameraId(null);
+        });
         mediaExportInProgressRef.current = false;
       }
     });
@@ -1418,6 +1450,7 @@ export function DirectorCanvas() {
           dpr={performanceConfig.gizmoDpr}
           onSnapshotChange={updateViewportGizmoSnapshot}
           rightOffset={gizmoRightOffset}
+          topOffset={toolbarHeight + 24}
           snapshot={visibleViewportSnapshot}
         />
       ) : null}
@@ -1443,7 +1476,10 @@ export function DirectorCanvas() {
           renderDpr={performanceConfig.monitorDpr}
         />
       ) : null}
-      {activeCameraView && referenceVideoRendering ? createPortal((() => {
+      {referenceVideoRendering ? createPortal((() => {
+        const shot = cameras.find((item) => item.id === exportCameraId);
+        const snapshot = shot ? getCameraPlaybackSnapshot(shot, sceneObjects, getRuntimePlaybackProgress(), sceneSettings) : activeCameraView;
+        if (!snapshot) return null;
         const dimensions = getReferenceVideoDimensions(
           referenceVideoQuality,
           finishedShotAspectRatio
@@ -1460,7 +1496,7 @@ export function DirectorCanvas() {
             aria-hidden="true"
           >
             <Canvas
-              camera={{ fov: activeCameraView.fov, position: activeCameraView.position }}
+              camera={{ fov: snapshot.fov, position: snapshot.position }}
               dpr={1}
               gl={{ antialias: true, preserveDrawingBuffer: true }}
               onCreated={({ gl }) => { referenceVideoCanvasRef.current = gl.domElement; }}
@@ -1474,7 +1510,7 @@ export function DirectorCanvas() {
               />
               <ambientLight intensity={1.15} />
               <directionalLight intensity={1.2} position={[8, 10, 6]} />
-              <PlaybackCameraSync fovOverride={finishedShotFov} snapshot={activeCameraView} />
+              <PlaybackCameraSync cameraId={exportCameraId} fovOverride={finishedShotFov} snapshot={snapshot} />
               <Suspense fallback={null}><SceneRoot renderMode="clean-camera" /></Suspense>
             </Canvas>
           </div>
