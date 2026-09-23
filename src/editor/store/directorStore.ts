@@ -2534,6 +2534,7 @@ export const useDirectorStore = create<DirectorStore>((set, get) => {
           selectedObjectId,
           selectedObjectIds: selectedObjectId ? [selectedObjectId] : [],
           selectedCrowdId: null,
+          directorInspectorMode: "auto",
           selectedCameraKeyframeId: null,
           selectedCameraKeyframeIds: [],
           cameraMotionProgress: state.cameraMotionProgress,

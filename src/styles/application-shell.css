@@ -316,7 +316,6 @@
 
 .director-home-guide,
 .director-home-release,
-.director-home-contributors,
 .director-home-controls {
   max-width: 1120px;
   margin: 38px auto 0;
@@ -324,43 +323,6 @@
   border-radius: 22px;
   padding: 24px;
   background: rgb(var(--panel-rgb) / 0.72);
-}
-
-.director-home-contributor-list {
-  display: grid;
-  margin: 20px 0 0;
-}
-
-.director-home-contributor-list > div {
-  display: grid;
-  grid-template-columns: minmax(140px, 0.32fr) minmax(0, 1fr);
-  align-items: center;
-  gap: 18px;
-  border-top: 1px solid rgb(var(--border-rgb) / 0.3);
-  padding: 14px 2px 0;
-}
-
-.director-home-contributor-list dt {
-  color: rgb(var(--text-rgb));
-  font-size: 13px;
-  font-weight: 750;
-}
-
-.director-home-contributor-list dd {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin: 0;
-  color: rgb(var(--text-muted-rgb));
-  font-size: 11px;
-  line-height: 1.6;
-}
-
-.director-home-contributor-list dd strong {
-  flex: 0 0 auto;
-  color: rgb(var(--accent-rgb));
-  font-size: 11px;
 }
 
 .director-home-control-grid {
@@ -371,7 +333,6 @@
 }
 
 .director-home-control-group,
-.director-home-mac-gestures,
 .director-home-tools-guide {
   border: 1px solid rgb(var(--border-rgb) / 0.34);
   border-radius: 12px;
@@ -379,8 +340,7 @@
   background: rgb(var(--surface-rgb) / 0.42);
 }
 
-.director-home-control-group > header,
-.director-home-mac-gestures > header {
+.director-home-control-group > header {
   display: flex;
   align-items: flex-start;
   gap: 9px;
@@ -389,7 +349,6 @@
 }
 
 .director-home-control-group h3,
-.director-home-mac-gestures h3,
 .director-home-tools-guide h3 {
   margin: 0;
   color: rgb(var(--text-rgb));
@@ -397,8 +356,7 @@
   line-height: 1.5;
 }
 
-.director-home-control-group header p,
-.director-home-mac-gestures header p {
+.director-home-control-group header p {
   margin: 2px 0 0;
   color: rgb(var(--text-muted-rgb));
   font-size: 9px;
@@ -406,7 +364,6 @@
 }
 
 .director-home-control-group dl,
-.director-home-mac-gestures dl,
 .director-home-tools-guide dl {
   display: grid;
   gap: 0;
@@ -414,7 +371,6 @@
 }
 
 .director-home-control-group dl > div,
-.director-home-mac-gestures dl > div,
 .director-home-tools-guide dl > div {
   display: grid;
   grid-template-columns: minmax(104px, auto) minmax(0, 1fr);
@@ -425,7 +381,6 @@
 }
 
 .director-home-control-group dt,
-.director-home-mac-gestures dt,
 .director-home-tools-guide dt {
   width: fit-content;
   border: 1px solid rgb(var(--border-rgb) / 0.5);
@@ -438,22 +393,11 @@
 }
 
 .director-home-control-group dd,
-.director-home-mac-gestures dd,
 .director-home-tools-guide dd {
   margin: 0;
   color: rgb(var(--text-muted-rgb));
   font-size: 10px;
   line-height: 1.55;
-}
-
-.director-home-mac-gestures {
-  margin-top: 12px;
-  border-color: rgb(var(--accent-rgb) / 0.25);
-}
-
-.director-home-mac-gestures dl {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  column-gap: 18px;
 }
 
 .director-home-tools-guide {
@@ -506,7 +450,7 @@
 
 .director-home-steps {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
   margin: 20px 0 0;
   padding: 0;
@@ -625,7 +569,6 @@
 
   .director-home-guide,
   .director-home-release,
-  .director-home-contributors,
   .director-home-controls {
     padding: 18px;
   }
@@ -638,20 +581,8 @@
   .director-home-steps,
   .director-home-release-list,
   .director-home-control-grid,
-  .director-home-mac-gestures dl,
   .director-home-tools-guide dl {
     grid-template-columns: 1fr;
-  }
-
-  .director-home-contributor-list > div {
-    grid-template-columns: 1fr;
-    gap: 6px;
-  }
-
-  .director-home-contributor-list dd {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 4px;
   }
 
   .director-home-steps li {

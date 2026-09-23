@@ -1,6 +1,6 @@
 import "./styles/index.css";
 import { useEffect, useState } from "react";
-import { ArrowDown, ArrowRight, BookOpen, Boxes, Check, Clock3, Hand, House, Keyboard, MousePointer2, Plus, Sparkles, Trash2, Users, X } from "lucide-react";
+import { ArrowDown, ArrowRight, BookOpen, Boxes, Check, Clock3, House, Keyboard, MousePointer2, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { DirectorDeskShell } from "./app/layout/DirectorDeskShell";
 import { CameraVideoExportButton } from "./editor/io/CameraVideoExportButton";
 import { DirectorCanvas } from "./editor/canvas/DirectorCanvas";
@@ -32,10 +32,11 @@ import { getBenchmarkPerformanceProfile } from "./editor/performance/performance
 type AppScreen = "home" | "editor";
 
 const HOME_QUICK_START_STEPS = [
-  ["选择导演台", "打开已有导演台，或点击“新建导演台”创建一个空场景。"],
-  ["摆人物和道具", "从工具栏添加模型，选中后使用 XYZ 三轴移动、旋转和缩放。"],
-  ["记录镜头", "点击“运镜 → 开始掌镜”，用 WASD 移动，每到一个镜头按 Enter。"],
-  ["预演并导出", "先“看路线”检查轨迹，再“看成片”，满意后导出 MP4 参考视频。"],
+  ["打开导演台", "选择已有导演台，或点击“新建导演台”创建一个独立保存的场景。"],
+  ["添加并选中对象", "使用视口上方工具栏添加角色、模型或机位；从左侧场景层级或画布中选中要编辑的对象。"],
+  ["调整场景", "选择移动、旋转或缩放工具后拖动画布中的三轴控件，也可以在右侧属性面板直接输入精确数值。"],
+  ["记录运动", "拖动底部时间轴到目标帧，调整人物、道具或摄像机，再点击“记录起点”或“记录当前位置”；至少记录两个点。"],
+  ["预演并导出", "使用底部播放按钮检查整段运动；选中摄像机可在右侧“轨迹”页预演，确认后从顶部或摄像机属性中导出视频。"],
 ] as const;
 
 const HOME_RELEASE_NOTES = [
@@ -47,72 +48,50 @@ const HOME_RELEASE_NOTES = [
   "新增可拖动实时监看小窗、MP4 参考视频导出和更可靠的撤销逻辑",
 ] as const;
 
-const HOME_COMMUNITY_CONTRIBUTORS = [
-  {
-    name: "AIGC 耀光",
-    douyinId: "AIJPDM001",
-    contribution: "群友镜头预设构想与共创反馈",
-  },
-] as const;
-
 const HOME_CONTROL_GROUPS = [
   {
-    title: "普通导演视角",
-    description: "摆场景和检查路线时使用",
+    title: "查看画布",
+    description: "按住 Alt；macOS 使用 Option",
     controls: [
-      ["W / A / S / D", "前进、左移、后退、右移"],
-      ["Space / Shift", "上升 / 下降"],
-      ["鼠标左键拖动", "环绕观察场景"],
-      ["鼠标右键拖动", "平移观察中心"],
+      ["Alt / Option + 左键拖动", "环绕观察场景"],
+      ["Alt / Option + 中键拖动", "平移观察中心"],
+      ["Alt / Option + 右键拖动", "靠近或远离场景"],
       ["滚轮", "靠近 / 远离场景"],
+      ["右上角坐标控件", "切换前、后、左、右、上、下视图"],
     ],
   },
   {
-    title: "掌镜模式",
-    description: "像 FPS 游戏一样录制摄影机轨迹点",
+    title: "选择与编辑",
+    description: "场景层级、画布和属性面板保持同步",
     controls: [
-      ["W / A / S / D", "前进、左移、后退、右移"],
-      ["E / Q", "镜头上升 / 下降"],
-      ["移动鼠标", "转动镜头方向"],
-      ["Enter", "保存或更新当前轨迹点"],
-      ["Space", "播放 / 暂停人物和物体运动"],
-      ["F", "锁定或取消准星所指目标"],
-      ["滚轮", "调整镜头 FOV"],
-      ["Esc", "释放鼠标并退出掌镜"],
-      ["单击画面", "重新锁定鼠标"],
+      ["单击对象或场景树条目", "选中并打开对应的右侧属性"],
+      ["单击画布空白处", "打开 3D 场景属性"],
+      ["Shift + 单击场景树", "多选或取消选择对象"],
+      ["拖动 XYZ 三轴", "移动、旋转或缩放当前对象"],
+      ["Delete / Backspace", "删除当前选中对象"],
     ],
   },
   {
-    title: "通用编辑",
-    description: "场景、路线点和时间轴都适用",
+    title: "时间轴与记录",
+    description: "人物、道具和摄像机共用同一帧范围",
     controls: [
+      ["拖动播放头", "暂停并定位到指定帧"],
+      ["记录起点 / 记录当前位置", "保存当前对象在该帧的状态"],
+      ["播放按钮", "从起点预演镜头和对象运动"],
+      ["右侧路线 / 轨迹页", "编辑人物路线或摄像机轨迹点"],
       ["⌘ / Ctrl + C", "复制选中的人物或物体"],
       ["⌘ / Ctrl + V", "粘贴并选中新副本"],
       ["⌘ / Ctrl + Z", "撤销最近一次编辑或拖动"],
-      ["Shift + 单击", "在场景树中多选 / 取消选择"],
-      ["Delete / Backspace", "删除当前选中对象"],
-      ["拖动 XYZ 字母", "连续调整对应轴数值"],
-      ["↑ / ↓", "聚焦 XYZ 字母时微调数值"],
-      ["拖动底部时间轴", "立即暂停并定位到指定时间"],
     ],
   },
 ] as const;
 
-const HOME_MAC_GESTURES = [
-  ["单指按下并拖动", "普通导演视角中环绕观察；掌镜时直接移动手指即可转向"],
-  ["双指上下滑动", "普通视角缩放场景；掌镜模式调整镜头 FOV"],
-  ["双指点按后拖动", "开启 macOS“辅助点按”后，可平移普通导演视角"],
-  ["双指滚动首页", "上下查看完整使用说明和本次更新"],
-  ["轻点画面", "掌镜退出锁定后，重新进入鼠标锁定"],
-] as const;
-
 const HOME_TOOL_GROUPS = [
-  ["顶部", "首页、切换导演台、导演/第一视角、运镜工作台、视角手感"],
-  ["视口工具栏", "移动、旋转、缩放、添加角色、路线常亮、导入模型、模型库、添加机位"],
-  ["画面工具", "选择画幅、当前/四方位/十二方位截图、全屏"],
-  ["底部时间轴", "回到开头、播放/暂停、拖动定位、总时长、记录点、删除当前点"],
-  ["运镜工作台", "开始掌镜、添加/插入/批量移动轨迹点、看路线、看成片、导出视频"],
-  ["右侧属性", "对象 XYZ、姿势、动作、人物路线、场景地面与路径碰撞"],
+  ["顶部栏", "返回首页、切换或新建导演台、导出全部机位视频、关闭导演台"],
+  ["左侧栏", "切换透视或机位视角；搜索、选择、隐藏、锁定和删除场景对象"],
+  ["视口工具栏", "变换对象、添加角色或机位、导入模型、打开模型库、设置画幅、截图和全屏"],
+  ["右侧属性", "编辑场景、人物、模型或摄像机；人物含姿势、动作和路线，摄像机含轨迹和截图"],
+  ["底部时间轴", "设置帧数和帧率、定位播放头、记录动作点或轨迹点、播放和删除当前点"],
 ] as const;
 
 function getUrlDirectorDeskInstanceId() {
@@ -382,8 +361,8 @@ export default function App() {
           <header className="director-home-section-heading">
             <span><BookOpen aria-hidden="true" size={16} />第一次使用</span>
             <div>
-              <h2 id="director-home-guide-title">四步完成第一条运镜</h2>
-              <p>不用先学习复杂的 3D 软件，按照下面顺序操作即可。</p>
+              <h2 id="director-home-guide-title">五步完成场景和镜头</h2>
+              <p>下面的步骤与当前界面一致，人物、道具和摄像机都通过同一条底部时间轴记录。</p>
             </div>
           </header>
           <ol className="director-home-steps">
@@ -395,12 +374,10 @@ export default function App() {
             ))}
           </ol>
           <p className="director-home-shortcuts">
-            <strong>掌镜快捷键</strong>
-            <kbd>WASD</kbd>移动
-            <kbd>Q / E</kbd>下降 / 上升
-            <kbd>Enter</kbd>保存镜头
-            <kbd>Space</kbd>播放 / 暂停
-            <kbd>Esc</kbd>退出掌镜
+            <strong>视口提示</strong>
+            <kbd>Alt / Option</kbd>配合鼠标拖动查看场景
+            <kbd>Shift</kbd>在左侧场景树中多选
+            <kbd>Delete</kbd>删除选中对象
           </p>
         </section>
 
@@ -419,30 +396,12 @@ export default function App() {
           </ul>
         </section>
 
-        <section className="director-home-contributors" aria-labelledby="director-home-contributors-title">
-          <header className="director-home-section-heading">
-            <span><Users aria-hidden="true" size={16} />群友贡献</span>
-            <div>
-              <h2 id="director-home-contributors-title">共同完善 3D 导演台</h2>
-              <p>感谢群友提供真实工作流、镜头构想和使用反馈。</p>
-            </div>
-          </header>
-          <dl className="director-home-contributor-list">
-            {HOME_COMMUNITY_CONTRIBUTORS.map((contributor) => (
-              <div key={contributor.douyinId}>
-                <dt>{contributor.name}</dt>
-                <dd><span>{contributor.contribution}</span><strong>抖音号：{contributor.douyinId}</strong></dd>
-              </div>
-            ))}
-          </dl>
-        </section>
-
         <section className="director-home-controls" aria-labelledby="director-home-controls-title">
           <header className="director-home-section-heading">
             <span><Keyboard aria-hidden="true" size={16} />完整操作表</span>
             <div>
               <h2 id="director-home-controls-title">键盘、鼠标与触控板操作</h2>
-              <p>快捷键在输入框中不会触发；掌镜模式下请先单击 3D 画面锁定鼠标。</p>
+              <p>普通查看需按住 Alt；macOS 对应 Option。快捷键在输入框中不会触发。</p>
             </div>
           </header>
 
@@ -458,15 +417,6 @@ export default function App() {
               </article>
             ))}
           </div>
-
-          <article className="director-home-mac-gestures">
-            <header><Hand aria-hidden="true" size={17} /><div><h3>macOS 触控板手势</h3><p>以 MacBook 默认手势和已开启“辅助点按”为准</p></div></header>
-            <dl>
-              {HOME_MAC_GESTURES.map(([gesture, action]) => (
-                <div key={gesture}><dt>{gesture}</dt><dd>{action}</dd></div>
-              ))}
-            </dl>
-          </article>
 
           <article className="director-home-tools-guide">
             <h3>主要界面按钮</h3>

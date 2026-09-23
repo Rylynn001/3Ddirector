@@ -47,21 +47,18 @@ it("returns to a real home page that lists director desks 1 through 4", async ()
     expect(screen.getByText(`导演台 ${number} 号`)).toBeInTheDocument();
   }
   expect(window.location.search).not.toContain("instanceId");
-  expect(screen.getByRole("heading", { name: "四步完成第一条运镜" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "五步完成场景和镜头" })).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "向下查看使用说明" })).toHaveAttribute("href", "#director-home-guide-title");
-  expect(screen.getByText("掌镜快捷键")).toBeInTheDocument();
+  expect(screen.getByText("视口提示")).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "路线编辑、监看与导出升级" })).toBeInTheDocument();
   expect(screen.getByText("主成片 FOV 与监看小窗 FOV 已分开设置，导出使用主成片 FOV")).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "共同完善 3D 导演台" })).toBeInTheDocument();
-  expect(screen.getByText("AIGC 耀光")).toBeInTheDocument();
-  expect(screen.getByText("抖音号：AIJPDM001")).toBeInTheDocument();
+  expect(screen.queryByText("群友贡献")).not.toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "键盘、鼠标与触控板操作" })).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "普通导演视角" })).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "掌镜模式" })).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "通用编辑" })).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "macOS 触控板手势" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "查看画布" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "选择与编辑" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "时间轴与记录" })).toBeInTheDocument();
   expect(screen.getByText("⌘ / Ctrl + Z")).toBeInTheDocument();
-  expect(screen.getByText("双指点按后拖动")).toBeInTheDocument();
+  expect(screen.getByText("Alt / Option + 左键拖动")).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "主要界面按钮" })).toBeInTheDocument();
 });
 

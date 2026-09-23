@@ -34,6 +34,21 @@ it("第72帧在层级里来回切换角色和相机保持当前时间", async ()
   }
 });
 
+it("从场景检查器切换到左侧摄像机时会打开摄像机属性", async () => {
+  const user = userEvent.setup();
+  const state = useDirectorStore.getState();
+  state.openSceneInspector();
+
+  render(<ObjectTreePanel />);
+
+  await user.click(screen.getByRole("button", { name: "机位01" }));
+
+  const nextState = useDirectorStore.getState();
+  expect(nextState.directorInspectorMode).toBe("auto");
+  expect(nextState.selectedObjectId).toBe("cam_object_1");
+  expect(nextState.project.activeCameraId).toBe("cam_1");
+});
+
 it("shows a centered empty search state when no objects match", async () => {
   const user = userEvent.setup();
   render(<ObjectTreePanel />);
