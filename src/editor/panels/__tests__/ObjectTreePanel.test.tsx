@@ -49,6 +49,23 @@ it("从场景检查器切换到左侧摄像机时会打开摄像机属性", asyn
   expect(nextState.project.activeCameraId).toBe("cam_1");
 });
 
+it("从一个机位视角切换左侧其他摄像机时会回到 persp", async () => {
+  const user = userEvent.setup();
+  const state = useDirectorStore.getState();
+  state.addCameraShot();
+  state.setViewportCamera("cam_1");
+
+  render(<ObjectTreePanel />);
+
+  expect(useDirectorStore.getState().viewportCameraId).toBe("cam_1");
+  await user.click(screen.getByRole("button", { name: "机位02" }));
+
+  const nextState = useDirectorStore.getState();
+  expect(nextState.viewMode).toBe("director");
+  expect(nextState.viewportCameraId).toBeNull();
+  expect(nextState.project.activeCameraId).toBe("cam_2");
+});
+
 it("shows a centered empty search state when no objects match", async () => {
   const user = userEvent.setup();
   render(<ObjectTreePanel />);

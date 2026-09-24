@@ -2527,6 +2527,8 @@ export const useDirectorStore = create<DirectorStore>((set, get) => {
 
         return {
           ...state,
+          viewMode: "director",
+          viewportCameraId: null,
           project: {
             ...state.project,
             activeCameraId: cameraId,
