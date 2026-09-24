@@ -1,6 +1,6 @@
 import "./styles/index.css";
 import { useEffect, useState } from "react";
-import { ArrowDown, ArrowRight, BookOpen, Boxes, Check, Clock3, House, Keyboard, MousePointer2, Plus, Send, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowRight, BookOpen, Boxes, Check, Clock3, House, Keyboard, Loader2, MousePointer2, Plus, Send, Sparkles, Trash2, X } from "lucide-react";
 import { DirectorDeskShell } from "./app/layout/DirectorDeskShell";
 import { DirectorCanvas } from "./editor/canvas/DirectorCanvas";
 import {
@@ -9,6 +9,7 @@ import {
   postDirectorDeskCapturesToHost,
   postDirectorDeskMessageToHost,
 } from "./editor/io/hostBridge";
+import { requestReferenceVideoExport } from "./editor/io/referenceVideoExport";
 import { useDirectorStore } from "./editor/store/directorStore";
 import {
   createDirectorDeskRecord,
@@ -170,23 +171,58 @@ export default function App() {
   const [directorDeskView, setDirectorDeskView] = useState(createInitialDirectorDeskViewState);
   const { records: directorDesks, activeDeskId, screen } = directorDeskView;
   const [allSentToCanvas, setAllSentToCanvas] = useState(false);
+  const [isSending, setIsSending] = useState(false);
 
   const hasCaptures = useDirectorStore((state) =>
-    state.project.cameras.some((c) => !c.isVirtual && (c.captures ?? []).length > 0)
+    state.project.cameras.some(
+      (c) =>
+        !c.isVirtual &&
+        ((c.captures ?? []).length > 0 || (c.motionPath?.keyframes.length ?? 0) >= 2)
+    )
   );
 
-  function sendAllCapturesToCanvas() {
-    const cams = useDirectorStore.getState().project.cameras.filter((c) => !c.isVirtual);
-    postDirectorDeskCapturesToHost(
-      cams.flatMap((cam) =>
+  async function sendAllCapturesToCanvas() {
+    if (isSending) return;
+    setIsSending(true);
+    try {
+      const { project } = useDirectorStore.getState();
+      const cams = project.cameras.filter((c) => !c.isVirtual);
+
+      const imageCaptures = cams.flatMap((cam) =>
         (cam.captures ?? []).map((capture) => ({
           dataUrl: capture.dataUrl,
           fileName: `${capture.name}.png`,
         }))
-      )
-    );
-    setAllSentToCanvas(true);
-    setTimeout(() => setAllSentToCanvas(false), 1500);
+      );
+
+      const videoCaptures: Array<{ dataUrl: string; fileName: string }> = [];
+      for (const [index, cam] of cams.entries()) {
+        if ((cam.motionPath?.keyframes.length ?? 0) >= 2) {
+          try {
+            const result = await requestReferenceVideoExport({
+              cameraId: cam.id,
+              fileName: `${String(index + 1).padStart(2, "0")}-${cam.name.replace(/[\\/:*?"<>|]/g, "_")}`,
+              fps: project.fps,
+              quality: "1080p",
+            });
+            const dataUrl = await new Promise<string>((resolve) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result as string);
+              reader.readAsDataURL(result.blob);
+            });
+            videoCaptures.push({ dataUrl, fileName: result.fileName });
+          } catch {
+            // 单个相机导出失败不阻断其他相机
+          }
+        }
+      }
+
+      postDirectorDeskCapturesToHost([...imageCaptures, ...videoCaptures]);
+      setAllSentToCanvas(true);
+      setTimeout(() => setAllSentToCanvas(false), 1500);
+    } finally {
+      setIsSending(false);
+    }
   }
 
   function openDirectorDesk(
@@ -486,10 +522,14 @@ export default function App() {
             className="top-bar-action-button camera-video-export-trigger"
             type="button"
             onClick={sendAllCapturesToCanvas}
-            disabled={!hasCaptures}
+            disabled={!hasCaptures || isSending}
           >
-            {allSentToCanvas ? <Check aria-hidden="true" size={14} strokeWidth={1.9} /> : <Send aria-hidden="true" size={14} strokeWidth={1.9} />}
-            {allSentToCanvas ? "已导入" : "将所有素材导入画布"}
+            {isSending
+              ? <Loader2 aria-hidden="true" size={14} strokeWidth={1.9} className="spin" />
+              : allSentToCanvas
+                ? <Check aria-hidden="true" size={14} strokeWidth={1.9} />
+                : <Send aria-hidden="true" size={14} strokeWidth={1.9} />}
+            {isSending ? "导入中…" : allSentToCanvas ? "已导入" : "将所有素材导入画布"}
           </button>
           <button
             className="top-bar-action-button"
