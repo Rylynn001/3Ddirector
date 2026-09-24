@@ -171,7 +171,7 @@ export default function App() {
   const [directorDeskView, setDirectorDeskView] = useState(createInitialDirectorDeskViewState);
   const { records: directorDesks, activeDeskId, screen } = directorDeskView;
   const [allSentToCanvas, setAllSentToCanvas] = useState(false);
-  const [isSending, setIsSending] = useState(false);
+  const [sendProgress, setSendProgress] = useState<{ current: number; total: number } | null>(null);
 
   const hasCaptures = useDirectorStore((state) =>
     state.project.cameras.some(
@@ -182,47 +182,44 @@ export default function App() {
   );
 
   async function sendAllCapturesToCanvas() {
-    if (isSending) return;
-    setIsSending(true);
-    try {
-      const { project } = useDirectorStore.getState();
-      const cams = project.cameras.filter((c) => !c.isVirtual);
+    if (sendProgress !== null) return;
+    const { project } = useDirectorStore.getState();
+    const cams = project.cameras.filter((c) => !c.isVirtual);
+    const videoCams = cams.filter((c) => (c.motionPath?.keyframes.length ?? 0) >= 2);
+    const total = videoCams.length;
 
-      const imageCaptures = cams.flatMap((cam) =>
-        (cam.captures ?? []).map((capture) => ({
-          dataUrl: capture.dataUrl,
-          fileName: `${capture.name}.png`,
-        }))
-      );
+    const imageCaptures = cams.flatMap((cam) =>
+      (cam.captures ?? []).map((capture) => ({
+        dataUrl: capture.dataUrl,
+        fileName: `${capture.name}.png`,
+      }))
+    );
 
-      const videoCaptures: Array<{ dataUrl: string; fileName: string }> = [];
-      for (const [index, cam] of cams.entries()) {
-        if ((cam.motionPath?.keyframes.length ?? 0) >= 2) {
-          try {
-            const result = await requestReferenceVideoExport({
-              cameraId: cam.id,
-              fileName: `${String(index + 1).padStart(2, "0")}-${cam.name.replace(/[\\/:*?"<>|]/g, "_")}`,
-              fps: project.fps,
-              quality: "1080p",
-            });
-            const dataUrl = await new Promise<string>((resolve) => {
-              const reader = new FileReader();
-              reader.onload = () => resolve(reader.result as string);
-              reader.readAsDataURL(result.blob);
-            });
-            videoCaptures.push({ dataUrl, fileName: result.fileName });
-          } catch {
-            // 单个相机导出失败不阻断其他相机
-          }
-        }
+    const videoCaptures: Array<{ dataUrl: string; fileName: string }> = [];
+    for (const [index, cam] of videoCams.entries()) {
+      setSendProgress({ current: index + 1, total });
+      try {
+        const result = await requestReferenceVideoExport({
+          cameraId: cam.id,
+          fileName: `${String(index + 1).padStart(2, "0")}-${cam.name.replace(/[\\/:*?"<>|]/g, "_")}`,
+          fps: project.fps,
+          quality: "1080p",
+        });
+        const dataUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.readAsDataURL(result.blob);
+        });
+        videoCaptures.push({ dataUrl, fileName: result.fileName });
+      } catch {
+        // 单个相机导出失败不阻断其他
       }
-
-      postDirectorDeskCapturesToHost([...imageCaptures, ...videoCaptures]);
-      setAllSentToCanvas(true);
-      setTimeout(() => setAllSentToCanvas(false), 1500);
-    } finally {
-      setIsSending(false);
     }
+
+    postDirectorDeskCapturesToHost([...imageCaptures, ...videoCaptures]);
+    setSendProgress(null);
+    setAllSentToCanvas(true);
+    setTimeout(() => setAllSentToCanvas(false), 1500);
   }
 
   function openDirectorDesk(
@@ -488,6 +485,12 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      {sendProgress !== null && (
+        <div className="send-overlay">
+          <Loader2 aria-hidden="true" size={22} strokeWidth={1.8} className="spin" />
+          <span>正在渲染 {sendProgress.current}/{sendProgress.total} 个相机轨迹视频…</span>
+        </div>
+      )}
       <header className="top-bar">
         <div className="top-bar-left">
           <button className="top-bar-title top-bar-home-button" type="button" onClick={backToHome}>
@@ -522,14 +525,16 @@ export default function App() {
             className="top-bar-action-button camera-video-export-trigger"
             type="button"
             onClick={sendAllCapturesToCanvas}
-            disabled={!hasCaptures || isSending}
+            disabled={!hasCaptures || sendProgress !== null}
           >
-            {isSending
+            {sendProgress !== null
               ? <Loader2 aria-hidden="true" size={14} strokeWidth={1.9} className="spin" />
               : allSentToCanvas
                 ? <Check aria-hidden="true" size={14} strokeWidth={1.9} />
                 : <Send aria-hidden="true" size={14} strokeWidth={1.9} />}
-            {isSending ? "导入中…" : allSentToCanvas ? "已导入" : "将所有素材导入画布"}
+            {sendProgress !== null
+              ? `渲染 ${sendProgress.current}/${sendProgress.total}…`
+              : allSentToCanvas ? "已导入" : "将所有素材导入画布"}
           </button>
           <button
             className="top-bar-action-button"

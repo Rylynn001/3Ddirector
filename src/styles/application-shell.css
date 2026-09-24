@@ -759,6 +759,30 @@
   color: rgb(var(--text-rgb));
 }
 
+.send-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgb(0 0 0 / 0.55);
+  color: #fff;
+  font-size: 14px;
+  pointer-events: all;
+  user-select: none;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
 .viewport-sensitivity-settings {
   position: relative;
   z-index: 80;
