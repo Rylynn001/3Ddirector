@@ -1,12 +1,12 @@
 import "./styles/index.css";
 import { useEffect, useState } from "react";
-import { ArrowDown, ArrowRight, BookOpen, Boxes, Check, Clock3, House, Keyboard, MousePointer2, Plus, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowRight, BookOpen, Boxes, Check, Clock3, House, Keyboard, MousePointer2, Plus, Send, Sparkles, Trash2, X } from "lucide-react";
 import { DirectorDeskShell } from "./app/layout/DirectorDeskShell";
-import { CameraVideoExportButton } from "./editor/io/CameraVideoExportButton";
 import { DirectorCanvas } from "./editor/canvas/DirectorCanvas";
 import {
   DIRECTOR_DESK_SESSION_OPENED_EVENT,
   initDirectorDeskHostBridge,
+  postDirectorDeskCapturesToHost,
   postDirectorDeskMessageToHost,
 } from "./editor/io/hostBridge";
 import { useDirectorStore } from "./editor/store/directorStore";
@@ -169,6 +169,25 @@ export default function App() {
   const benchmarkMode = getPerformanceBenchmarkMode(window.location.search);
   const [directorDeskView, setDirectorDeskView] = useState(createInitialDirectorDeskViewState);
   const { records: directorDesks, activeDeskId, screen } = directorDeskView;
+  const [allSentToCanvas, setAllSentToCanvas] = useState(false);
+
+  const hasCaptures = useDirectorStore((state) =>
+    state.project.cameras.some((c) => !c.isVirtual && (c.captures ?? []).length > 0)
+  );
+
+  function sendAllCapturesToCanvas() {
+    const cams = useDirectorStore.getState().project.cameras.filter((c) => !c.isVirtual);
+    postDirectorDeskCapturesToHost(
+      cams.flatMap((cam) =>
+        (cam.captures ?? []).map((capture) => ({
+          dataUrl: capture.dataUrl,
+          fileName: `${capture.name}.png`,
+        }))
+      )
+    );
+    setAllSentToCanvas(true);
+    setTimeout(() => setAllSentToCanvas(false), 1500);
+  }
 
   function openDirectorDesk(
     id: string,
@@ -463,7 +482,15 @@ export default function App() {
           </div>
         </div>
         <div className="top-bar-actions">
-          <CameraVideoExportButton />
+          <button
+            className="top-bar-action-button camera-video-export-trigger"
+            type="button"
+            onClick={sendAllCapturesToCanvas}
+            disabled={!hasCaptures}
+          >
+            {allSentToCanvas ? <Check aria-hidden="true" size={14} strokeWidth={1.9} /> : <Send aria-hidden="true" size={14} strokeWidth={1.9} />}
+            {allSentToCanvas ? "已导入" : "将所有素材导入画布"}
+          </button>
           <button
             className="top-bar-action-button"
             type="button"

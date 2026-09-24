@@ -1,4 +1,4 @@
-import { Camera, Download, Eye, Images, Pause, Play, Send, Trash2, Waypoints, X, ZoomIn, ZoomOut } from "lucide-react";
+import { Camera, Check, Download, Eye, Images, Pause, Play, Send, Trash2, Waypoints, X, ZoomIn, ZoomOut } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   InspectorAxisGroup,
@@ -40,6 +40,8 @@ export function CameraPanel() {
   const [viewerOffset, setViewerOffset] = useState({ x: 0, y: 0 });
   const [viewerDragging, setViewerDragging] = useState(false);
   const [motionFovDraft, setMotionFovDraft] = useState("50");
+  const [sentCaptureId, setSentCaptureId] = useState<string | null>(null);
+  const [allSent, setAllSent] = useState(false);
   const viewerDragStateRef = useRef<{
     startX: number;
     startY: number;
@@ -169,6 +171,8 @@ export function CameraPanel() {
         fileName: `${capture.name}.png`,
       },
     ]);
+    setSentCaptureId(capture.id);
+    setTimeout(() => setSentCaptureId(null), 1500);
   }, []);
 
   const sendAllCapturesToCanvas = useCallback(() => {
@@ -180,6 +184,8 @@ export function CameraPanel() {
         }))
       )
     );
+    setAllSent(true);
+    setTimeout(() => setAllSent(false), 1500);
   }, [cameraCaptureGroups]);
 
   async function handleCameraCapture() {
@@ -380,7 +386,9 @@ export function CameraPanel() {
                       sendCaptureToCanvas(capture);
                     }}
                   >
-                    <Send aria-hidden="true" size={14} strokeWidth={1.9} />
+                    {sentCaptureId === capture.id
+                      ? <Check aria-hidden="true" size={14} strokeWidth={1.9} />
+                      : <Send aria-hidden="true" size={14} strokeWidth={1.9} />}
                   </button>
                   <button
                     aria-label={`查看截图 ${capture.name}`}
@@ -463,8 +471,10 @@ export function CameraPanel() {
           type="button"
           onClick={sendAllCapturesToCanvas}
         >
-          <Send aria-hidden="true" data-testid="camera-capture-send-icon" size={14} strokeWidth={1.9} />
-          <span>发送到画布</span>
+          {allSent
+            ? <Check aria-hidden="true" data-testid="camera-capture-send-icon" size={14} strokeWidth={1.9} />
+            : <Send aria-hidden="true" data-testid="camera-capture-send-icon" size={14} strokeWidth={1.9} />}
+          <span>{allSent ? "已发送" : "发送到画布"}</span>
         </button>
       </div>
     );
