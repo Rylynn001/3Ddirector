@@ -349,6 +349,15 @@ export default function App() {
   if (screen === "home") {
     return (
       <main className="director-home-shell">
+        <button
+          className="director-home-close-button"
+          type="button"
+          aria-label="关闭"
+          title="关闭"
+          onClick={handleClose}
+        >
+          <X aria-hidden="true" size={18} strokeWidth={1.8} />
+        </button>
         <section className="director-home-hero">
           <div>
             <p className="director-home-kicker">Standalone 3D Director Desk</p>

@@ -1,5 +1,6 @@
-import { Camera, Check, Download, Eye, Images, Pause, Play, Send, Trash2, Waypoints, X, ZoomIn, ZoomOut } from "lucide-react";
+import { Camera, Check, Download, Eye, Images, Loader2, Pause, Play, Send, Trash2, Waypoints, X, ZoomIn, ZoomOut } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   InspectorAxisGroup,
   InspectorPanel,
@@ -15,6 +16,7 @@ import { getDirectorObjectFocusTarget, isCameraFocusableObject } from "../schema
 import type { DirectorCameraCapture } from "../schema/directorProject";
 import { getCameraMotionPath, getCameraMotionTimingPlan } from "../schema/cameraMotion";
 import { useDirectorStore } from "../store/directorStore";
+import { requestReferenceVideoExport } from "../io/referenceVideoExport";
 import { CameraVideoExportButton } from "../io/CameraVideoExportButton";
 
 const VIEWER_ZOOM_MIN = 0.25;
@@ -42,6 +44,8 @@ export function CameraPanel() {
   const [motionFovDraft, setMotionFovDraft] = useState("50");
   const [sentCaptureId, setSentCaptureId] = useState<string | null>(null);
   const [allSent, setAllSent] = useState(false);
+  const [videoSent, setVideoSent] = useState(false);
+  const [videoSending, setVideoSending] = useState(false);
   const viewerDragStateRef = useRef<{
     startX: number;
     startY: number;
@@ -68,6 +72,7 @@ export function CameraPanel() {
   const setCameraMotionProgress = useDirectorStore((state) => state.setCameraMotionProgress);
   const setCameraMotionPlaying = useDirectorStore((state) => state.setCameraMotionPlaying);
   const setViewMode = useDirectorStore((state) => state.setViewMode);
+  const fps = useDirectorStore((state) => state.project.fps);
 
   if (!camera) return null;
   const currentCamera = camera;
@@ -174,6 +179,31 @@ export function CameraPanel() {
     setSentCaptureId(capture.id);
     setTimeout(() => setSentCaptureId(null), 1500);
   }, []);
+
+  const sendVideoToCanvas = useCallback(async () => {
+    if (videoSending) return;
+    setVideoSending(true);
+    try {
+      const result = await requestReferenceVideoExport({
+        cameraId: currentCamera.id,
+        fileName: currentCamera.name.replace(/[\\/:*?"<>|]/g, "_"),
+        fps,
+        quality: "1080p",
+      });
+      const dataUrl = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsDataURL(result.blob);
+      });
+      postDirectorDeskCapturesToHost([{ dataUrl, fileName: result.fileName }]);
+      setVideoSent(true);
+      setTimeout(() => setVideoSent(false), 1500);
+    } catch {
+      // 导出失败静默处理
+    } finally {
+      setVideoSending(false);
+    }
+  }, [currentCamera.id, currentCamera.name, fps, videoSending]);
 
   const sendAllCapturesToCanvas = useCallback(() => {
     postDirectorDeskCapturesToHost(
@@ -667,12 +697,35 @@ export function CameraPanel() {
             ) : null}
           </>
         )}
+        {motionPath.keyframes.length >= 2 && (
+          <button
+            className="camera-capture-send-all viewport-toolbar-crowd-confirm"
+            type="button"
+            disabled={videoSending}
+            onClick={sendVideoToCanvas}
+          >
+            {videoSending
+              ? <Loader2 aria-hidden="true" size={14} strokeWidth={1.9} className="spin" />
+              : videoSent
+                ? <Check aria-hidden="true" size={14} strokeWidth={1.9} />
+                : <Send aria-hidden="true" size={14} strokeWidth={1.9} />}
+            <span>{videoSending ? "渲染中…" : videoSent ? "已发送" : "发送视频到画布"}</span>
+          </button>
+        )}
       </div>
     );
   }
 
   return (
-    <InspectorPanel
+    <>
+      {videoSending && createPortal(
+        <div className="send-overlay">
+          <Loader2 aria-hidden="true" size={22} strokeWidth={1.8} className="spin" />
+          <span>正在渲染 {currentCamera.name} 的轨迹视频…</span>
+        </div>,
+        document.body
+      )}
+      <InspectorPanel
       title="摄像机"
       ariaLabel="摄像机右侧属性面板"
       className={activeTab === "captures" ? "camera-inspector-captures" : undefined}
@@ -814,5 +867,6 @@ export function CameraPanel() {
       )}
       {renderViewer()}
     </InspectorPanel>
+    </>
   );
 }

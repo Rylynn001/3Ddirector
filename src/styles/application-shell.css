@@ -42,6 +42,36 @@
   background-clip: padding-box;
 }
 
+.director-home-close-button {
+  position: fixed;
+  top: 16px;
+  right: 20px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid rgb(var(--border-rgb) / 0.32);
+  border-radius: 8px;
+  background: rgb(var(--surface-rgb) / 0.72);
+  color: rgb(var(--muted-rgb));
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: background 150ms, color 150ms, border-color 150ms;
+}
+
+.director-home-close-button:hover {
+  background: rgb(var(--surface-rgb));
+  border-color: rgb(var(--border-rgb) / 0.6);
+  color: rgb(var(--text-rgb));
+}
+
+.director-home-close-button:active {
+  background: rgb(var(--surface-rgb) / 0.9);
+}
+
 .director-home-hero {
   display: flex;
   align-items: flex-end;
