@@ -41,6 +41,8 @@ import { getDirectorObjectFocusTarget } from "../schema/cameraTarget";
 import { DEFAULT_CHARACTER_BODY_TYPE, normalizeBodyType } from "../runtime/mannequin/bodyTypes";
 import {
   DEFAULT_DIRECTOR_CAMERA_VIEW_SNAPSHOT,
+  CAMERA_FOV_MIN,
+  CAMERA_FOV_MAX,
   getCameraRigPositionFromViewSnapshot,
   getCameraViewSnapshotFromShot,
   cameraViewRotation,
@@ -442,11 +444,11 @@ function readPersistedDirectorState(options: DirectorStateOptions = {}): Directo
       showCharacterRoutes: state.showCharacterRoutes !== false,
       finishedShotFov:
         typeof state.finishedShotFov === "number" && Number.isFinite(state.finishedShotFov)
-          ? Math.min(120, Math.max(10, state.finishedShotFov))
+          ? Math.min(CAMERA_FOV_MAX, Math.max(CAMERA_FOV_MIN, state.finishedShotFov))
           : null,
       motionMonitorFov:
         typeof state.motionMonitorFov === "number" && Number.isFinite(state.motionMonitorFov)
-          ? Math.min(120, Math.max(10, state.motionMonitorFov))
+          ? Math.min(CAMERA_FOV_MAX, Math.max(CAMERA_FOV_MIN, state.motionMonitorFov))
           : null,
       motionStudioOpen: false,
       performanceProfile: normalizePerformanceProfileId(state.performanceProfile),
@@ -1246,13 +1248,13 @@ export const useDirectorStore = create<DirectorStore>((set, get) => {
       commitUiMutation((state) => ({
         ...state,
         finishedShotFov:
-          typeof fov === "number" && Number.isFinite(fov) ? Math.min(120, Math.max(10, fov)) : null,
+          typeof fov === "number" && Number.isFinite(fov) ? Math.min(CAMERA_FOV_MAX, Math.max(CAMERA_FOV_MIN, fov)) : null,
       })),
     setMotionMonitorFov: (fov) =>
       commitUiMutation((state) => ({
         ...state,
         motionMonitorFov:
-          typeof fov === "number" && Number.isFinite(fov) ? Math.min(120, Math.max(10, fov)) : null,
+          typeof fov === "number" && Number.isFinite(fov) ? Math.min(CAMERA_FOV_MAX, Math.max(CAMERA_FOV_MIN, fov)) : null,
       })),
     setViewportRuleOfThirdsEnabled: (enabled) =>
       commitUiMutation((state) => ({

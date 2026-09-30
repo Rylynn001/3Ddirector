@@ -766,6 +766,19 @@
   line-height: 14px;
 }
 
+.camera-motion-live-fov {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: rgb(var(--text-muted-rgb));
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.camera-motion-live-fov output {
+  color: rgb(var(--text-rgb));
+}
+
 .camera-motion-loop-button {
   justify-self: start;
   min-height: 30px;

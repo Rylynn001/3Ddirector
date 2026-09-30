@@ -13,6 +13,14 @@ export function cameraViewRotation(position: [number, number, number], target: [
 }
 
 export const VIEWPORT_CAMERA_ASPECT = 16 / 9;
+export const CAMERA_FOV_MIN = 5;
+export const CAMERA_FOV_MAX = 120;
+const FULL_FRAME_SENSOR_HEIGHT_MM = 24;
+
+export function focalLengthToVerticalFov(focalLengthMm: number) {
+  return 2 * Math.atan(FULL_FRAME_SENSOR_HEIGHT_MM / (2 * focalLengthMm)) * 180 / Math.PI;
+}
+
 export const VIEWPORT_CAMERA_VISUAL_SCALE = 0.35;
 export const VIEWPORT_CAMERA_FRUSTUM_DEPTH = 5.2 * VIEWPORT_CAMERA_VISUAL_SCALE;
 export const VIEWPORT_CAMERA_FRUSTUM_FRAME_WIDTH = 3.2 * VIEWPORT_CAMERA_VISUAL_SCALE;

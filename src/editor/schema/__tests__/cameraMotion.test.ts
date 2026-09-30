@@ -41,6 +41,22 @@ describe("camera motion path", () => {
       keyframes: [],
     });
     expect(normalizeCameraMotionPath({ duration: 99 }).duration).toBe(30);
+    expect(normalizeCameraMotionPath({ keyframes: [{ id: "tele", time: 0, fov: 6.867 }] }).keyframes[0].fov).toBe(6.867);
+  });
+
+  it("interpolates FOV linearly by time even on a smooth camera route", () => {
+    const shot = camera();
+    shot.motionPath = {
+      ...shot.motionPath!,
+      speedMode: "custom",
+      interpolation: "smooth",
+      keyframes: [
+        { id: "first", time: 1 / 144, position: [0, 2, 8], target: [0, 1, 0], fov: 50 },
+        { id: "last", time: 50 / 144, position: [0, 2, 8], target: [0, 1, 0], fov: 80 },
+      ],
+    };
+
+    expect(getCameraMotionSnapshot(shot, 25.5 / 144).fov).toBeCloseTo(65, 4);
   });
 
   it("captures the current camera as a keyframe", () => {

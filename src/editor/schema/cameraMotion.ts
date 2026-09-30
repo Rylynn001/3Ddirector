@@ -13,7 +13,7 @@ import {
 } from "./routeTiming";
 import type { RouteTimingSample } from "./routeTiming";
 import { Euler, Quaternion, Vector3 } from "three";
-import { cameraViewRotation } from "./cameraGeometry";
+import { CAMERA_FOV_MAX, CAMERA_FOV_MIN, cameraViewRotation } from "./cameraGeometry";
 import { TRANSFORM_CHANNELS, channelParts, normalizeCurveTangents, sampleCurve } from "./animationCurves";
 import {
   normalizeDirectorCameraTargetBodyPart,
@@ -79,7 +79,7 @@ export function normalizeCameraMotionPath(
             time: clamp(finite(keyframe.time, index)),
             position: tuple(keyframe.position, [0, 2, 8]),
             target: tuple(keyframe.target, fallbackTarget),
-            fov: Math.min(120, Math.max(10, finite(keyframe.fov, 50))),
+            fov: Math.min(CAMERA_FOV_MAX, Math.max(CAMERA_FOV_MIN, finite(keyframe.fov, 50))),
             targetMode:
               keyframe.targetMode === "object" || keyframe.targetMode === "manual"
                 ? keyframe.targetMode
@@ -304,7 +304,7 @@ function getBaseCameraMotionSnapshot(camera: DirectorCameraShot, progress: numbe
     const target = [0, 1, 2].map((axis) =>
       interpolateValue(targetValues(axis as 0 | 1 | 2), segment, local, path.interpolation)
     ) as [number, number, number];
-    return { fov: linear(from.fov, to.fov, local), position, target };
+    return { fov: linear(from.fov, to.fov, rawLocal), position, target };
   }
 
   const timingPlan = createCameraTimingPlan(path);
@@ -318,7 +318,11 @@ function getBaseCameraMotionSnapshot(camera: DirectorCameraShot, progress: numbe
   const target: [number, number, number] = [0, 1, 2].map((axis) =>
     interpolateValue(targetValues(axis as 0 | 1 | 2), segment, local, path.interpolation)
   ) as [number, number, number];
-  const fov = linear(from.fov, to.fov, local);
+  const fovProgress = clamp(
+    (p - timingPlan.departures[segment])
+    / Math.max(0.000001, timingPlan.arrivals[segment + 1] - timingPlan.departures[segment]),
+  );
+  const fov = linear(from.fov, to.fov, fovProgress);
 
   return { fov, position, target };
 }

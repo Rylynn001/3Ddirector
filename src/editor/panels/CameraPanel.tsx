@@ -14,7 +14,9 @@ import { downloadDataUrl } from "../io/screenshotExport";
 import { postDirectorDeskCapturesToHost } from "../io/hostBridge";
 import { getDirectorObjectFocusTarget, isCameraFocusableObject } from "../schema/cameraTarget";
 import type { DirectorCameraCapture } from "../schema/directorProject";
-import { getCameraMotionPath, getCameraMotionTimingPlan } from "../schema/cameraMotion";
+import { getCameraMotionPath, getCameraMotionSnapshot, getCameraMotionTimingPlan } from "../schema/cameraMotion";
+import { CAMERA_FOV_MAX, CAMERA_FOV_MIN, focalLengthToVerticalFov } from "../schema/cameraGeometry";
+import { progressToFrame } from "../schema/frameTime";
 import { useDirectorStore } from "../store/directorStore";
 import { requestReferenceVideoExport } from "../io/referenceVideoExport";
 import { CameraVideoExportButton } from "../io/CameraVideoExportButton";
@@ -22,8 +24,11 @@ import { CameraVideoExportButton } from "../io/CameraVideoExportButton";
 const VIEWER_ZOOM_MIN = 0.25;
 const VIEWER_ZOOM_MAX = 5;
 const VIEWER_ZOOM_STEP = 0.25;
-const CAMERA_MOTION_FOV_MIN = 10;
-const CAMERA_MOTION_FOV_MAX = 120;
+const FOCAL_LENGTH_PRESETS = [8, 12, 16, 24, 35, 50, 85, 100, 135, 200] as const;
+
+function matchingFocalLength(fov: number) {
+  return FOCAL_LENGTH_PRESETS.find((length) => Math.abs(focalLengthToVerticalFov(length) - fov) < 0.01);
+}
 
 function clampNumber(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -42,6 +47,7 @@ export function CameraPanel() {
   const [viewerOffset, setViewerOffset] = useState({ x: 0, y: 0 });
   const [viewerDragging, setViewerDragging] = useState(false);
   const [motionFovDraft, setMotionFovDraft] = useState("50");
+  const [cameraFovDraft, setCameraFovDraft] = useState("50");
   const [sentCaptureId, setSentCaptureId] = useState<string | null>(null);
   const [allSent, setAllSent] = useState(false);
   const [videoSent, setVideoSent] = useState(false);
@@ -73,6 +79,7 @@ export function CameraPanel() {
   const setCameraMotionPlaying = useDirectorStore((state) => state.setCameraMotionPlaying);
   const setViewMode = useDirectorStore((state) => state.setViewMode);
   const fps = useDirectorStore((state) => state.project.fps);
+  const totalFrames = useDirectorStore((state) => state.project.totalFrames);
 
   if (!camera) return null;
   const currentCamera = camera;
@@ -93,6 +100,9 @@ export function CameraPanel() {
       : "manual";
   const motionPath = useMemo(() => getCameraMotionPath(currentCamera), [currentCamera]);
   const motionTimingPlan = useMemo(() => getCameraMotionTimingPlan(currentCamera), [currentCamera]);
+  const currentFov = motionPath.keyframes.length > 0
+    ? getCameraMotionSnapshot(currentCamera, cameraMotionProgress).fov
+    : currentCamera.fov;
   const selectedMotionKeyframe =
     motionPath.keyframes.find((item) => item.id === selectedCameraKeyframeId) ?? motionPath.keyframes[0] ?? null;
 
@@ -102,6 +112,10 @@ export function CameraPanel() {
   useEffect(() => {
     setMotionFovDraft(selectedMotionKeyframe ? String(selectedMotionKeyframe.fov) : "");
   }, [selectedMotionKeyframe?.fov, selectedMotionKeyframe?.id]);
+
+  useEffect(() => {
+    setCameraFovDraft(String(Number(currentFov.toFixed(2))));
+  }, [currentCamera.id, currentFov]);
 
   useEffect(() => {
     if (!viewerCapture) {
@@ -365,11 +379,37 @@ export function CameraPanel() {
   function commitSelectedMotionFov(value: string) {
     if (!selectedMotionKeyframe) return;
     const parsed = Number(value);
-    const nextFov = Number.isFinite(parsed)
-      ? clampNumber(parsed, CAMERA_MOTION_FOV_MIN, CAMERA_MOTION_FOV_MAX)
+    const nextFov = value.trim() && Number.isFinite(parsed)
+      ? clampNumber(parsed, CAMERA_FOV_MIN, CAMERA_FOV_MAX)
       : selectedMotionKeyframe.fov;
     updateCameraMotionKeyframe(currentCamera.id, selectedMotionKeyframe.id, { fov: nextFov });
+    setCameraMotionPlaying(false);
+    setViewMode("camera");
     setMotionFovDraft(String(nextFov));
+  }
+
+  function commitCameraFov(value: string) {
+    const parsed = Number(value);
+    if (!value.trim() || !Number.isFinite(parsed)) return;
+    const nextFov = clampNumber(parsed, CAMERA_FOV_MIN, CAMERA_FOV_MAX);
+    setCameraMotionPlaying(false);
+    setViewMode("camera");
+    updateCamera(currentCamera.id, { fov: nextFov });
+    if (motionPath.keyframes.length > 0) {
+      const currentFrame = progressToFrame(cameraMotionProgress, totalFrames);
+      const pointAtFrame = motionPath.keyframes.find((keyframe, index) =>
+        progressToFrame(motionTimingPlan?.arrivals[index] ?? keyframe.time, totalFrames) === currentFrame
+      );
+      if (pointAtFrame) {
+        updateCameraMotionKeyframe(currentCamera.id, pointAtFrame.id, { fov: nextFov });
+      } else {
+        addCameraMotionKeyframe(currentCamera.id, cameraMotionProgress, {
+          ...getCameraMotionSnapshot(currentCamera, cameraMotionProgress),
+          fov: nextFov,
+        });
+      }
+    }
+    setCameraFovDraft(String(nextFov));
   }
 
   function formatMotionTime(time: number) {
@@ -633,6 +673,10 @@ export function CameraPanel() {
               />
               <span>{formatMotionTime(cameraMotionProgress)} / {motionPath.duration.toFixed(1)}s</span>
             </div>
+            <div className="camera-motion-live-fov">
+              <span>当前视野角度</span>
+              <output aria-label="当前轨迹 FOV">{Number(currentFov.toFixed(2))}°</output>
+            </div>
 
             <button
               className={`camera-motion-loop-button${motionPath.loop ? " is-active" : ""}`}
@@ -677,8 +721,8 @@ export function CameraPanel() {
                   label="此点视野角度 (FOV)"
                   rangeAriaLabel="轨迹点 FOV 滑杆"
                   numberAriaLabel="轨迹点 FOV"
-                  min="10"
-                  max="120"
+                  min={CAMERA_FOV_MIN}
+                  max={CAMERA_FOV_MAX}
                   step="0.1"
                   value={motionFovDraft}
                   onValueChange={commitSelectedMotionFov}
@@ -686,6 +730,17 @@ export function CameraPanel() {
                   onNumberBlur={commitSelectedMotionFov}
                   onNumberChange={setMotionFovDraft}
                 />
+                <InspectorSelectField
+                  label="焦段（全画幅）"
+                  ariaLabel="轨迹点焦段预设"
+                  value={String(matchingFocalLength(selectedMotionKeyframe.fov) ?? "custom")}
+                  onChange={(value) => {
+                    if (value !== "custom") commitSelectedMotionFov(String(Number(focalLengthToVerticalFov(Number(value)).toFixed(3))));
+                  }}
+                >
+                  <option value="custom">自定义</option>
+                  {FOCAL_LENGTH_PRESETS.map((length) => <option key={length} value={length}>{length} mm</option>)}
+                </InspectorSelectField>
                 <button
                   className="camera-motion-delete-button"
                   type="button"
@@ -838,12 +893,30 @@ export function CameraPanel() {
             label="视野角度 (FOV)"
             rangeAriaLabel="机位 FOV 滑杆"
             numberAriaLabel="机位 FOV"
-            max="120"
-            min="10"
+            max={CAMERA_FOV_MAX}
+            min={CAMERA_FOV_MIN}
             step="0.1"
-            value={currentCamera.fov}
-            onValueChange={(value) => updateCamera(currentCamera.id, { fov: Number(value) })}
+            value={cameraFovDraft}
+            onValueChange={commitCameraFov}
+            onNumberChange={(value) => {
+              setCameraFovDraft(value);
+              commitCameraFov(value);
+            }}
+            onNumberBlur={(value) => {
+              if (!value.trim()) setCameraFovDraft(String(Number(currentFov.toFixed(2))));
+            }}
           />
+          <InspectorSelectField
+            label="焦段（全画幅）"
+            ariaLabel="机位焦段预设"
+            value={String(matchingFocalLength(currentFov) ?? "custom")}
+            onChange={(value) => {
+              if (value !== "custom") commitCameraFov(String(Number(focalLengthToVerticalFov(Number(value)).toFixed(3))));
+            }}
+          >
+            <option value="custom">自定义</option>
+            {FOCAL_LENGTH_PRESETS.map((length) => <option key={length} value={length}>{length} mm</option>)}
+          </InspectorSelectField>
           <InspectorSection title="相机截图" className="camera-capture-section">
             <button
               className="camera-capture-current-button"

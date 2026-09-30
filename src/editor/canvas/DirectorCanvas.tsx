@@ -739,7 +739,7 @@ function MotionMonitor({
           <input
             aria-label="看成片 FOV"
             type="range"
-            min="10"
+            min="5"
             max="120"
             step="1"
             value={finishedShotFov ?? cameraSnapshot?.fov ?? 50}
@@ -757,7 +757,7 @@ function MotionMonitor({
           <input
             aria-label="小窗 FOV"
             type="range"
-            min="10"
+            min="5"
             max="120"
             step="1"
             value={monitorFov ?? monitorCameraBase?.fov ?? 50}

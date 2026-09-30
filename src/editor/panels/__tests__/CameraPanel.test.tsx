@@ -5,6 +5,8 @@ import { clearViewportCaptureHandler, setViewportCaptureHandler } from "../../io
 import { createInitialDirectorState, useDirectorStore } from "../../store/directorStore";
 import { CameraPanel } from "../CameraPanel";
 import { getDirectorObjectFocusTarget } from "../../schema/cameraTarget";
+import { getCameraMotionSnapshot } from "../../schema/cameraMotion";
+import { frameToProgress } from "../../schema/frameTime";
 
 function seedCameraCapture() {
   useDirectorStore.setState((state) => ({
@@ -267,6 +269,64 @@ it("updates the selected camera name and fov", async () => {
   const camera = useDirectorStore.getState().project.cameras[0];
   expect(camera.name).toBe("近景机位");
   expect(camera.fov).toBe(65);
+  expect(useDirectorStore.getState().viewMode).toBe("camera");
+  expect(useDirectorStore.getState().viewportCameraId).toBe("cam_1");
+});
+
+it("records FOV at the current frame and shows linear values while seeking", async () => {
+  const state = useDirectorStore.getState();
+  const totalFrames = state.project.totalFrames;
+  state.addCameraMotionKeyframe("cam_1", frameToProgress(1, totalFrames));
+  state.setCameraMotionProgress(frameToProgress(50, totalFrames));
+  render(<CameraPanel />);
+
+  fireEvent.change(screen.getByRole("slider", { name: "机位 FOV 滑杆" }), { target: { value: "80" } });
+
+  const camera = useDirectorStore.getState().project.cameras[0];
+  expect(camera.motionPath?.keyframes.map((keyframe) => [Math.round(keyframe.time * totalFrames), keyframe.fov])).toEqual([
+    [1, 50], [50, 80],
+  ]);
+  expect(useDirectorStore.getState().viewMode).toBe("camera");
+
+  act(() => useDirectorStore.getState().setCameraMotionProgress(frameToProgress(25.5, totalFrames)));
+  const midFov = getCameraMotionSnapshot(useDirectorStore.getState().project.cameras[0], frameToProgress(25.5, totalFrames)).fov;
+  expect(midFov).toBeCloseTo(65, 3);
+  expect(screen.getByRole("spinbutton", { name: "机位 FOV" })).toHaveValue(65);
+
+  await userEvent.setup().click(screen.getByRole("button", { name: "轨迹" }));
+  expect(screen.getByLabelText("当前轨迹 FOV")).toHaveTextContent("65°");
+});
+
+it("keeps tracking and hold settings when changing FOV on an existing frame", () => {
+  const state = useDirectorStore.getState();
+  state.addCameraMotionKeyframe("cam_1", 0.5);
+  const originalId = useDirectorStore.getState().project.cameras[0].motionPath!.keyframes[0].id;
+  state.updateCameraMotionKeyframe("cam_1", originalId, {
+    targetMode: "object",
+    targetObjectId: "char_default_a",
+    pointBehavior: "hold",
+    holdSeconds: 1,
+  });
+  render(<CameraPanel />);
+
+  fireEvent.change(screen.getByRole("slider", { name: "机位 FOV 滑杆" }), { target: { value: "80" } });
+
+  expect(useDirectorStore.getState().project.cameras[0].motionPath?.keyframes).toMatchObject([
+    { id: originalId, fov: 80, targetMode: "object", targetObjectId: "char_default_a", pointBehavior: "hold", holdSeconds: 1 },
+  ]);
+});
+
+it("applies full-frame focal length presets down to 200 mm", async () => {
+  const user = userEvent.setup();
+  render(<CameraPanel />);
+
+  await user.click(screen.getByLabelText("机位焦段预设"));
+  await user.click(within(screen.getByRole("listbox", { name: "机位焦段预设" })).getByRole("option", { name: "200 mm" }));
+
+  const fov = useDirectorStore.getState().project.cameras[0].fov;
+  expect(fov).toBeCloseTo(6.867, 2);
+  expect(screen.getByLabelText("机位焦段预设")).toHaveTextContent("200 mm");
+  expect(useDirectorStore.getState().viewMode).toBe("camera");
 });
 
 it("uses the custom dropdown menu to switch camera shots", async () => {
