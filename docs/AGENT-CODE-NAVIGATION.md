@@ -73,6 +73,7 @@ ObjectMotionTransport
 - `moveCameraWaypointToFrame`：拖动相机点时把目标帧转回归一化时间，并将路径切为 `speedMode: custom`、线性时间曲线。
 - `.object-motion-transport__camera-waypoint`：每个相机轨迹点在标尺上的范围输入控件；左键拖动时间，右键删除。
 - `.object-motion-transport__ruler-scrubber`：播放头，只修改共享进度，不添加轨迹点。
+- 暂停拖动帧标尺时，播放头位于首末关键帧之间会采样显示运镜；越过最后一个关键帧后不再用末点姿态覆盖视口，用户可自行调整镜头。播放时仍按轨迹采样。
 - `rulerStartFrame` / `rulerEndFrame`：仅控制标尺可见窗口，不裁剪项目轨迹。
 
 标尺上显示的点来自当前 `activeCamera`，并使用 `getCameraMotionTimingPlan(camera).arrivals` 计算实际到达帧。不能简单地假设显示位置总等于 `keyframe.time`：匀速、柔和速度和停留行为会改变到达时间。
@@ -214,6 +215,7 @@ npm run build
 5. 右键删除标尺点，三个界面同步消失，撤销可恢复。
 6. 刷新页面或重开同一导演台，轨迹仍在；打开另一个导演台实例，不应串场。
 7. 至少两个点时，导演视角、第一视角和导出采样结果一致。
+8. 有 0、40、80 帧关键点时，暂停拖动播放头在 0-80 帧之间应预览运镜；拖到 90、100 帧时视口不应跳回 80 帧，用户可自行调整并记录新镜头。
 
 ## 6. 容易误改的边界
 

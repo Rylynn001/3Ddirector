@@ -5,6 +5,7 @@ import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { ViewportNavigation } from "../ViewportNavigation";
 import { createInitialDirectorState, useDirectorStore, type CameraShotSnapshot } from "../../store/directorStore";
 import { getCameraViewSnapshotFromShot } from "../../schema/cameraGeometry";
+import { frameToProgress } from "../../schema/frameTime";
 import { setRuntimePlaybackProgress } from "../../runtime/playbackRuntime";
 
 const mock = vi.hoisted(() => ({
@@ -63,11 +64,63 @@ it("相机视口移动写回相机，打帧后可播放，返回 persp 恢复自
   act(() => state.setCameraMotionProgress(0));
   expect(camera.position.toArray()).toEqual(start.position);
   act(() => state.setCameraMotionPlaying(true));
+  expect(camera.position.toArray()).toEqual(start.position);
   act(() => { setRuntimePlaybackProgress(1); mock.frame(); });
   expect(camera.position.toArray()).toEqual(end.position);
   act(() => state.setViewportCamera(null));
   expect(camera.position.toArray()).toEqual(free.position);
   expect(useDirectorStore.getState().project.cameras[0].motionPath?.keyframes).toHaveLength(2);
+});
+
+it("帧标尺在首末关键帧间预览运镜，超过末帧后保留用户视角", () => {
+  const state = useDirectorStore.getState();
+  const shot = state.project.cameras[0];
+  const free: CameraShotSnapshot = { position: [10, 8, 12], target: [0, 0, 0], fov: 50 };
+  const controls = { target: new Vector3(), update: vi.fn(), mouseButtons: {} };
+  const controlsRef = { current: controls as unknown as OrbitControlsImpl };
+  let snapshot = free;
+  render(<ViewportNavigation controlsRef={controlsRef} freeSnapshot={free}
+    onFreeChange={vi.fn()} onCameraSnapshot={(value) => { snapshot = value; }} disabled={false} />);
+  act(() => state.setViewportCamera(shot.id));
+
+  const moveCamera = () => act(() => {
+    mock.props.onStart();
+    camera.position.add(new Vector3(3, 1, -2));
+    controls.target.add(new Vector3(3, 1, -2));
+    mock.props.onChange();
+    mock.props.onEnd();
+  });
+  const frame40 = frameToProgress(40, state.project.totalFrames);
+  const frame60 = frameToProgress(60, state.project.totalFrames);
+  const frame80 = frameToProgress(80, state.project.totalFrames);
+  const frame90 = frameToProgress(90, state.project.totalFrames);
+  const frame100 = frameToProgress(100, state.project.totalFrames);
+  act(() => state.addCameraMotionKeyframe(shot.id, 0, snapshot));
+  act(() => state.setCameraMotionProgress(frame40));
+  moveCamera();
+  act(() => state.addCameraMotionKeyframe(shot.id, frame40, snapshot));
+  const frame40Position = camera.position.toArray();
+
+  act(() => state.setCameraMotionProgress(frame80));
+  moveCamera();
+  act(() => state.addCameraMotionKeyframe(shot.id, frame80, snapshot));
+  const frame80Position = camera.position.toArray();
+
+  act(() => state.setCameraMotionProgress(frame60));
+  expect(camera.position.toArray()).not.toEqual(frame40Position);
+  expect(camera.position.toArray()).not.toEqual(frame80Position);
+  act(() => state.setCameraMotionProgress(frame80));
+  expect(camera.position.toArray()).toEqual(frame80Position);
+
+  moveCamera();
+  const userPosition = camera.position.toArray();
+  act(() => state.setCameraMotionProgress(frame90));
+  expect(camera.position.toArray()).toEqual(userPosition);
+  act(() => state.setCameraMotionProgress(frame100));
+  expect(camera.position.toArray()).toEqual(userPosition);
+
+  const keyframes = useDirectorStore.getState().project.cameras[0].motionPath?.keyframes ?? [];
+  expect(keyframes).toHaveLength(3);
 });
 
 it("Alt 配合鼠标导航，普通点击保留给选择对象", () => {

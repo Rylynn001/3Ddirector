@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef, type MutableRefObject } from "react
 import { MOUSE, PerspectiveCamera } from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { getCameraPlaybackSnapshot } from "../schema/cameraPlayback";
-import { getCameraMotionSnapshot } from "../schema/cameraMotion";
+import { getCameraMotionSnapshot, getCameraMotionTimingPlan } from "../schema/cameraMotion";
 import { getCameraRigPositionFromViewSnapshot, getCameraViewSnapshotFromShot } from "../schema/cameraGeometry";
 import { getRuntimePlaybackProgress } from "../runtime/playbackRuntime";
 import { useDirectorStore, type CameraShotSnapshot } from "../store/directorStore";
@@ -62,14 +62,22 @@ export function ViewportNavigation({ controlsRef, freeSnapshot, onFreeChange, on
       return;
     }
     const seek = `${shot.id}:${progress}`;
+    const keyframes = shot.motionPath?.keyframes ?? [];
+    const hasKeys = keyframes.length > 0;
+    const lastKeyframe = keyframes[keyframes.length - 1];
+    const lastArrival = lastKeyframe
+      ? getCameraMotionTimingPlan(shot)?.arrivals[keyframes.length - 1] ?? lastKeyframe.time
+      : 0;
+    const withinMotionPath = progress <= lastArrival + 1e-6;
+    const seeking = lastSeek.current !== null && lastSeek.current !== seek;
+    lastSeek.current = seek;
+    if (hasKeys && seeking && !playing && !withinMotionPath) return;
     const state = useDirectorStore.getState();
-    const hasKeys = Boolean(shot.motionPath?.keyframes.length);
-    apply(hasKeys && (lastSeek.current !== seek || playing || lastShot.current?.transform === shot.transform)
+    apply(hasKeys && (playing || withinMotionPath && (seeking || lastShot.current?.transform === shot.transform))
       ? shot.motionPath!.keyframes.length === 1
         ? getCameraMotionSnapshot(shot, progress)
         : getCameraPlaybackSnapshot(shot, state.project.objects, progress, state.project.scene)
       : getCameraViewSnapshotFromShot(shot));
-    lastSeek.current = seek;
     lastShot.current = shot;
   }, [viewMode, viewportCameraId, shot, progress, playing, freeSnapshot, disabled]);
 
