@@ -1,10 +1,23 @@
 import { expect, it } from "vitest";
+import { GEOMETRY_PRIMITIVE_OPTIONS } from "../../schema/directorProject";
 import {
   getModelLibraryCharacterStatus,
   getModelLibraryItems,
   LOCAL_GUO_ASSETS_AVAILABLE,
   LOCAL_MIXAMO_CHARACTER_AVAILABLE,
 } from "../modelLibraryCatalog";
+
+it("includes every supported geometry primitive without external assets", () => {
+  const items = getModelLibraryItems().filter((item) => item.categoryId === "geometry");
+
+  expect(items).toHaveLength(GEOMETRY_PRIMITIVE_OPTIONS.length);
+  for (const option of GEOMETRY_PRIMITIVE_OPTIONS) {
+    expect(items.find((item) => item.geometryType === option.type)).toMatchObject({
+      name: option.label,
+      kind: "prop",
+    });
+  }
+});
 
 it("labels character compatibility before a model is added", () => {
   const items = getModelLibraryItems();

@@ -15,17 +15,22 @@ import {
   Boxes,
   Camera,
   ChevronRight,
+  Circle,
+  Cone,
+  Cylinder,
   Expand,
   Grid2X2,
   Grid3X3,
   Image,
   Move3D,
   Plus,
+  Pyramid,
   Ratio,
   Route,
   Rotate3D,
   Scale3D,
   Trash2,
+  Torus,
   UserPlus,
   Video,
   X,
@@ -92,6 +97,15 @@ const MAX_CROWD_GRID_SIZE = 12;
 const MIN_CROWD_SPACING = 0.1;
 const MAX_CROWD_SPACING = 10;
 const CHARACTER_IMPORT_PREVIEW_STEP_MS = 1800;
+
+const GEOMETRY_ICONS: Record<GeometryPrimitiveType, LucideIcon> = {
+  box: Box,
+  sphere: Circle,
+  cylinder: Cylinder,
+  torus: Torus,
+  cone: Cone,
+  pyramid: Pyramid,
+};
 
 const CHARACTER_IMPORT_STATUS_LABELS = {
   ready: "可直接使用",
@@ -647,6 +661,11 @@ export function ViewportToolbar({
   }
 
   function addModelLibraryItem(item: ModelLibraryItem) {
+    if (item.geometryType) {
+      addGeometryPrimitive(item.geometryType);
+      setModelLibraryOpen(false);
+      return;
+    }
     addImportedAsset({
       kind: item.kind ?? "prop",
       assetSource: "library",
@@ -1025,8 +1044,9 @@ export function ViewportToolbar({
             </div>
           ) : (
             <div className="model-library-grid" role="list" aria-label="模型列表">
-              {activeModelLibraryItems.map((item) => (
-                activeModelLibraryCategoryId === "my-models" ? (
+              {activeModelLibraryItems.map((item) => {
+                const GeometryIcon = item.geometryType ? GEOMETRY_ICONS[item.geometryType] : Boxes;
+                return activeModelLibraryCategoryId === "my-models" ? (
                   <div key={item.id} className="model-library-card-wrap">
                     <button
                       aria-label={`添加模型 ${item.name}`}
@@ -1086,7 +1106,7 @@ export function ViewportToolbar({
                           src={item.thumbUrl}
                         />
                       ) : (
-                        <Boxes size={24} strokeWidth={1.6} />
+                        <GeometryIcon size={28} strokeWidth={1.6} />
                       )}
                     </span>
                     <span className="model-library-name">{item.name}</span>
@@ -1094,8 +1114,8 @@ export function ViewportToolbar({
                       <small className="model-library-character-status">{getModelLibraryCharacterStatus(item)}</small>
                     ) : null}
                   </button>
-                )
-              ))}
+                );
+              })}
               {activeModelLibraryCategoryId === "my-models" ? (
                 <button
                   aria-label="本地导入"

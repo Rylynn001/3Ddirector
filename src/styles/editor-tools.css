@@ -47,23 +47,31 @@
 }
 
 .model-library-tabs {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  display: flex;
   align-items: end;
   height: 40px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
   border-bottom: 1px solid rgb(var(--border-rgb) / 0.24);
+}
+
+.model-library-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .model-library-tab {
   position: relative;
+  flex: 1 0 auto;
   height: 40px;
   border: 0;
-  padding: 0;
+  padding: 0 12px;
   color: rgb(var(--text-dim-rgb));
   background: transparent;
   font-size: 12px;
   font-weight: 600;
   line-height: 17px;
+  white-space: nowrap;
 }
 
 .model-library-tab:hover,
@@ -85,7 +93,7 @@
 
 .model-library-grid {
   display: grid;
-  grid-template-columns: repeat(6, 66px);
+  grid-template-columns: repeat(auto-fill, 66px);
   grid-auto-rows: max-content;
   align-content: start;
   column-gap: 10px;
@@ -116,6 +124,8 @@
 
 .model-library-card {
   display: grid;
+  grid-template-rows: 66px 17px;
+  grid-auto-rows: 13px;
   align-content: start;
   min-width: 0;
   gap: 8px;

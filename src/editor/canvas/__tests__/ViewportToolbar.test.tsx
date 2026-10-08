@@ -352,6 +352,31 @@ it("adds geometry primitives from the add-character submenu", async () => {
   expect(useDirectorStore.getState().selectedObjectId).toBe(prop?.id);
 });
 
+it("adds all basic geometry models from the model library without importing assets", async () => {
+  const user = userEvent.setup();
+  render(<ViewportToolbar />);
+  const initialAssetCount = useDirectorStore.getState().project.assets.length;
+  const options = [
+    ["立方体", "box"], ["球体", "sphere"], ["圆柱体", "cylinder"],
+    ["环状体", "torus"], ["圆锥", "cone"], ["棱锥", "pyramid"],
+  ];
+
+  for (const [label, type] of options) {
+    await user.click(screen.getByRole("button", { name: "模型库" }));
+    await user.click(screen.getByRole("tab", { name: "基础几何体" }));
+    const button = screen.getByRole("button", { name: `添加模型 ${label}` });
+    expect(button.querySelector("svg")).toBeInTheDocument();
+    await user.click(button);
+
+    const state = useDirectorStore.getState();
+    expect(state.project.objects.find((item) => item.id === state.selectedObjectId)).toMatchObject({
+      name: label, kind: "prop", geometryType: type, color: "#d7e7ff",
+    });
+    expect(state.project.assets).toHaveLength(initialAssetCount);
+    expect(screen.queryByRole("dialog", { name: "模型库" })).not.toBeInTheDocument();
+  }
+});
+
 it("opens a crowd panel from the add-character menu hover row and adds a 3x3 character array", async () => {
   const user = userEvent.setup();
   render(<ViewportToolbar />);

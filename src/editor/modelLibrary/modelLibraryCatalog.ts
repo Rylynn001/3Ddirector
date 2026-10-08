@@ -1,12 +1,12 @@
 import guoCharactersManifest from "./guoCharactersManifest.json";
 import guoPropsManifest from "./guoPropsManifest.json";
-import type { CharacterImportReadiness, CharacterRigProfile } from "../schema/directorProject";
+import { GEOMETRY_PRIMITIVE_OPTIONS, type CharacterImportReadiness, type CharacterRigProfile, type GeometryPrimitiveType } from "../schema/directorProject";
 import { getGuoCharacterCompatibility } from "./guoCharacterCompatibility";
 
 export const LOCAL_GUO_ASSETS_AVAILABLE = __LOCAL_GUO_ASSETS_AVAILABLE__;
 export const LOCAL_MIXAMO_CHARACTER_AVAILABLE = __LOCAL_MIXAMO_CHARACTER_AVAILABLE__;
 
-export type ModelLibraryCategoryId = "characters" | "convenience" | "home" | "outdoor" | "tools" | "weapons" | "my-models";
+export type ModelLibraryCategoryId = "geometry" | "characters" | "convenience" | "home" | "outdoor" | "tools" | "weapons" | "my-models";
 
 export type ModelLibraryCategory = {
   directoryName: string;
@@ -22,6 +22,7 @@ export type ModelLibraryItem = {
   thumbUrl?: string;
   url: string;
   kind?: "character" | "prop";
+  geometryType?: GeometryPrimitiveType;
   characterRigProfile?: CharacterRigProfile;
   characterImportReadiness?: CharacterImportReadiness;
   characterOrientationCorrection?: [number, number, number];
@@ -37,6 +38,7 @@ export function getModelLibraryCharacterStatus(item: ModelLibraryItem) {
 }
 
 export const MODEL_LIBRARY_CATEGORIES: ModelLibraryCategory[] = [
+  { id: "geometry", label: "基础几何体", directoryName: "" },
   ...(LOCAL_GUO_ASSETS_AVAILABLE || LOCAL_MIXAMO_CHARACTER_AVAILABLE
     ? [{ id: "characters" as const, label: "人物", directoryName: "人物" }]
     : []),
@@ -50,6 +52,7 @@ export const MODEL_LIBRARY_CATEGORIES: ModelLibraryCategory[] = [
 
 function createBuiltInThumbnail(name: string, categoryId: ModelLibraryCategoryId) {
   const colors: Record<ModelLibraryCategoryId, [string, string]> = {
+    geometry: ["#38506b", "#8cc7eb"],
     characters: ["#38506b", "#8cc7eb"],
     convenience: ["#295b78", "#59b7da"],
     home: ["#6d4d3d", "#d49a6a"],
@@ -90,6 +93,16 @@ export const BUILTIN_LIFE_MODELS: ModelLibraryItem[] = BUILTIN_LIFE_MODEL_INPUTS
   id: `builtin:${item.fileName}`,
   url: `builtin://life/${item.fileName}`,
   thumbUrl: createBuiltInThumbnail(item.name, item.categoryId),
+}));
+
+const BUILTIN_GEOMETRY_MODELS: ModelLibraryItem[] = GEOMETRY_PRIMITIVE_OPTIONS.map((option) => ({
+  categoryId: "geometry",
+  id: `builtin:geometry:${option.type}`,
+  name: option.label,
+  fileName: option.type,
+  url: `builtin://geometry/${option.type}`,
+  kind: "prop",
+  geometryType: option.type,
 }));
 
 type GuoCharacterManifestItem = {
@@ -170,7 +183,7 @@ export const GUO_PROP_MODELS: ModelLibraryItem[] = (guoPropsManifest.items as Gu
 
 export function getModelLibraryItems() {
   const localModels = LOCAL_GUO_ASSETS_AVAILABLE ? [...GUO_CHARACTER_MODELS, ...GUO_PROP_MODELS] : [];
-  return [...MIXAMO_CHARACTER_MODELS, ...localModels, ...BUILTIN_LIFE_MODELS].sort((a, b) => {
+  return [...BUILTIN_GEOMETRY_MODELS, ...MIXAMO_CHARACTER_MODELS, ...localModels, ...BUILTIN_LIFE_MODELS].sort((a, b) => {
     const categoryIndexA = MODEL_LIBRARY_CATEGORIES.findIndex((category) => category.id === a.categoryId);
     const categoryIndexB = MODEL_LIBRARY_CATEGORIES.findIndex((category) => category.id === b.categoryId);
 
