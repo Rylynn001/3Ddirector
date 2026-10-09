@@ -275,6 +275,60 @@
   pointer-events: none;
 }
 
+.object-motion-transport__playback-range {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgb(var(--object-motion-accent-rgb) / 0.12);
+  border-left: 2px solid rgb(56 189 248 / 0.6);
+  border-right: 2px solid rgb(239 68 68 / 0.6);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.object-motion-transport__in-point {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 2px solid #38bdf8;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.object-motion-transport__in-point::before {
+  content: 'I';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  font-size: 9px;
+  font-weight: 600;
+  color: #38bdf8;
+  text-shadow: 0 0 3px rgb(0 0 0 / 0.8);
+}
+
+.object-motion-transport__out-point {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 2px solid #ef4444;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.object-motion-transport__out-point::before {
+  content: 'O';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  font-size: 9px;
+  font-weight: 600;
+  color: #ef4444;
+  text-shadow: 0 0 3px rgb(0 0 0 / 0.8);
+}
+
+
 .object-motion-transport__ruler-frame-label {
   position: absolute;
   z-index: 3;

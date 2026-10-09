@@ -1061,28 +1061,38 @@ export function DirectorCanvas() {
       return;
     }
 
+    const state = useDirectorStore.getState();
+    const inPoint = state.playbackInPoint ?? 0;
+    const outPoint = state.playbackOutPoint ?? 1;
+    const rangeStart = Math.min(inPoint, outPoint);
+    const rangeEnd = Math.max(inPoint, outPoint);
+    const rangeDuration = rangeEnd - rangeStart;
+
     let animationFrame = 0;
-    let cycleStartedAt = performance.now() - getRuntimePlaybackProgress() * activeMotionDuration * 1000;
+    const currentProgress = getRuntimePlaybackProgress();
+    const startProgress = currentProgress >= rangeStart && currentProgress < rangeEnd ? currentProgress : rangeStart;
+    let cycleStartedAt = performance.now() - (startProgress - rangeStart) / rangeDuration * activeMotionDuration * 1000;
     let lastUiUpdateAt = 0;
     const uiIntervalMs = 1000 / performanceConfig.playbackUiFps;
     const tick = (now: number) => {
       const elapsed = (now - cycleStartedAt) / (activeMotionDuration * 1000);
-      if (elapsed >= 1) {
+      const actualProgress = rangeStart + elapsed * rangeDuration;
+      if (actualProgress >= rangeEnd) {
         if (activeCameraMotionPath?.loop) {
           cycleStartedAt = now;
-          setRuntimePlaybackProgress(0);
-          setCameraMotionProgress(0);
+          setRuntimePlaybackProgress(rangeStart);
+          setCameraMotionProgress(rangeStart);
           animationFrame = requestAnimationFrame(tick);
           return;
         }
-        setCameraMotionProgress(1);
+        setCameraMotionProgress(rangeEnd);
         setCameraMotionPlaying(false);
         return;
       }
-      setRuntimePlaybackProgress(elapsed);
+      setRuntimePlaybackProgress(actualProgress);
       if (now - lastUiUpdateAt >= uiIntervalMs) {
         lastUiUpdateAt = now;
-        setCameraMotionProgress(elapsed);
+        setCameraMotionProgress(actualProgress);
       }
       animationFrame = requestAnimationFrame(tick);
     };

@@ -90,6 +90,11 @@ export function ObjectMotionTransport({ onRecordCamera }: { onRecordCamera?: (ca
     state.project.cameras.find((camera) => camera.id === state.project.activeCameraId)
       ?? state.project.cameras[0]
   );
+  const playbackInPoint = useDirectorStore((state) => state.playbackInPoint);
+  const playbackOutPoint = useDirectorStore((state) => state.playbackOutPoint);
+  const setPlaybackInPoint = useDirectorStore((state) => state.setPlaybackInPoint);
+  const setPlaybackOutPoint = useDirectorStore((state) => state.setPlaybackOutPoint);
+  const clearPlaybackRange = useDirectorStore((state) => state.clearPlaybackRange);
   const addObjectMotionKeyframe = useDirectorStore((state) => state.addObjectMotionKeyframe);
   const deleteObjectMotionKeyframe = useDirectorStore((state) => state.deleteObjectMotionKeyframe);
   const deleteCameraMotionKeyframe = useDirectorStore((state) => state.deleteCameraMotionKeyframe);
@@ -198,6 +203,36 @@ export function ObjectMotionTransport({ onRecordCamera }: { onRecordCamera?: (ca
   const visibleCurrentFrame = Math.min(rulerEndFrame, Math.max(rulerStartFrame, currentFrame));
   const isCurrentFrameVisible = currentFrame >= rulerStartFrame && currentFrame <= rulerEndFrame;
 
+  useEffect(() => {
+    function handleRulerKeydown(event: KeyboardEvent) {
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest("[role='dialog'], input:not([type='range']), textarea, select, [contenteditable]:not([contenteditable='false'])")) return;
+
+      if (event.code === "KeyI") {
+        event.preventDefault();
+        if (event.altKey) {
+          setPlaybackInPoint(null);
+        } else {
+          setPlaybackInPoint(progress);
+        }
+      } else if (event.code === "KeyO") {
+        event.preventDefault();
+        if (event.altKey) {
+          setPlaybackOutPoint(null);
+        } else {
+          setPlaybackOutPoint(progress);
+        }
+      } else if (event.code === "KeyX" && event.altKey && (playbackInPoint !== null || playbackOutPoint !== null)) {
+        event.preventDefault();
+        clearPlaybackRange();
+      }
+    }
+
+    window.addEventListener("keydown", handleRulerKeydown);
+    return () => window.removeEventListener("keydown", handleRulerKeydown);
+  }, [progress, playbackInPoint, playbackOutPoint, setPlaybackInPoint, setPlaybackOutPoint, clearPlaybackRange]);
+
   if (isPiloting) {
     return (
       <section
@@ -276,6 +311,18 @@ export function ObjectMotionTransport({ onRecordCamera }: { onRecordCamera?: (ca
         <div className="object-motion-transport__ruler-toolbar">
           <strong>帧标尺</strong>
           <span>{rulerStartFrame} - {rulerEndFrame} / {totalFrames} 帧</span>
+          {playbackInPoint !== null || playbackOutPoint !== null ? (
+            <button
+              className="object-motion-transport__icon-button"
+              type="button"
+              aria-label="清除 In/Out 点"
+              title="清除 In/Out 点 (Alt+X)"
+              onClick={clearPlaybackRange}
+              style={{ marginLeft: '4px', fontSize: '9px', padding: '2px 6px', height: '20px' }}
+            >
+              清除区间
+            </button>
+          ) : null}
           <label className="object-motion-transport__frame-count-control">
             总帧数
             <input
@@ -312,6 +359,29 @@ export function ObjectMotionTransport({ onRecordCamera }: { onRecordCamera?: (ca
               />
             );
           })}
+          {playbackInPoint !== null || playbackOutPoint !== null ? (
+            <div
+              className="object-motion-transport__playback-range"
+              style={{
+                left: `${((playbackInPoint ?? 0) * 100)}%`,
+                width: `${((playbackOutPoint ?? 1) - (playbackInPoint ?? 0)) * 100}%`,
+              }}
+            />
+          ) : null}
+          {playbackInPoint !== null ? (
+            <div
+              className="object-motion-transport__in-point"
+              style={{ left: `${playbackInPoint * 100}%` }}
+              title={`In 点：第 ${progressToFrame(playbackInPoint, totalFrames)} 帧`}
+            />
+          ) : null}
+          {playbackOutPoint !== null ? (
+            <div
+              className="object-motion-transport__out-point"
+              style={{ left: `${playbackOutPoint * 100}%` }}
+              title={`Out 点：第 ${progressToFrame(playbackOutPoint, totalFrames)} 帧`}
+            />
+          ) : null}
           {showCameraTimeline && activeCamera && cameraPath ? cameraPath.keyframes.map((keyframe, index) => {
             const waypointFrame = progressToFrame(cameraSpans?.arrivals[index] ?? keyframe.time, totalFrames);
             if (waypointFrame < rulerStartFrame || waypointFrame > rulerEndFrame) return null;

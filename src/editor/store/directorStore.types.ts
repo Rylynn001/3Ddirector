@@ -130,6 +130,8 @@ export interface DirectorInternalState {
   cameraMotionProgress: number;
   cameraMotionPlaying: boolean;
   cameraMotionPlaybackRevision: number;
+  playbackInPoint: number | null;
+  playbackOutPoint: number | null;
   characterActionPreview: { objectId: string; actionPresetId: string } | null;
   cameraPilotMode: CameraPilotMode;
   cameraPilotEditKeyframeId: string | null;
@@ -242,6 +244,9 @@ export interface DirectorActions {
   setCameraMotionProgress: (progress: number) => void;
   setCameraMotionPlaying: (playing: boolean) => void;
   restartCameraMotionPlayback: () => void;
+  setPlaybackInPoint: (progress: number | null) => void;
+  setPlaybackOutPoint: (progress: number | null) => void;
+  clearPlaybackRange: () => void;
   setCharacterActionPreview: (preview: { objectId: string; actionPresetId: string } | null) => void;
   setMotionStudioOpen: (open: boolean) => void;
   startCameraPilot: (mode?: Exclude<CameraPilotMode, "idle">, editKeyframeId?: string | null) => void;

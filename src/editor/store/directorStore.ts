@@ -479,6 +479,8 @@ function createRuntimeStateFromPersistedState(state: DirectorState): DirectorRun
     cameraMotionProgress: 0,
     cameraMotionPlaying: false,
     cameraMotionPlaybackRevision: 0,
+    playbackInPoint: null,
+    playbackOutPoint: null,
     characterActionPreview: null,
     motionStudioOpen: false,
     cameraPilotMode: "idle",
@@ -3036,14 +3038,31 @@ export const useDirectorStore = create<DirectorStore>((set, get) => {
       }),
     restartCameraMotionPlayback: () =>
       set((state) => {
-        setRuntimePlaybackProgress(0);
+        const inPoint = state.playbackInPoint ?? 0;
+        setRuntimePlaybackProgress(inPoint);
         return {
           ...(state as DirectorRuntimeState),
-          cameraMotionProgress: 0,
+          cameraMotionProgress: inPoint,
           cameraMotionPlaying: true,
           cameraMotionPlaybackRevision: state.cameraMotionPlaybackRevision + 1,
         };
       }),
+    setPlaybackInPoint: (progress) =>
+      set((state) => ({
+        ...(state as DirectorRuntimeState),
+        playbackInPoint: progress,
+      })),
+    setPlaybackOutPoint: (progress) =>
+      set((state) => ({
+        ...(state as DirectorRuntimeState),
+        playbackOutPoint: progress,
+      })),
+    clearPlaybackRange: () =>
+      set((state) => ({
+        ...(state as DirectorRuntimeState),
+        playbackInPoint: null,
+        playbackOutPoint: null,
+      })),
     setCharacterActionPreview: (preview) =>
       set((state) => ({
         ...(state as DirectorRuntimeState),
