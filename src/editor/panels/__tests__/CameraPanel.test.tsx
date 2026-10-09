@@ -430,6 +430,8 @@ it("captures the current camera preview from the properties tab and shows it in 
   render(<CameraPanel />);
 
   await user.click(screen.getByRole("button", { name: "当前机位截图" }));
+  expect(screen.getByAltText("机位01-截图01 查看大图")).toHaveAttribute("src", "data:image/png;base64,camera-preview");
+  await user.click(screen.getByRole("button", { name: "关闭相机截图查看器" }));
   await user.click(screen.getByRole("button", { name: "摄像机截图" }));
 
   expect(useDirectorStore.getState().project.cameras[0]?.lastCaptureUrl).toBe("data:image/png;base64,camera-preview");
@@ -601,7 +603,10 @@ it("closes the capture viewer when clicking outside the image", async () => {
   await user.click(screen.getByLabelText("查看截图 机位01-截图01"));
 
   const previewImage = screen.getByAltText("机位01-截图01 查看大图");
-  const viewerStage = container.querySelector(".camera-capture-viewer-stage");
+  const viewer = screen.getByRole("dialog", { name: "相机截图查看器" });
+  const viewerStage = viewer.querySelector(".camera-capture-viewer-stage");
+  expect(viewer.parentElement).toBe(document.body);
+  expect(container).not.toContainElement(viewer);
 
   expect(viewerStage).toBeInTheDocument();
 

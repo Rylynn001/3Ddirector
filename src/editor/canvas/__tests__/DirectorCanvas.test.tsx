@@ -4,6 +4,7 @@ import { afterEach, beforeEach, vi } from "vitest";
 import { PerspectiveCamera, Vector3 } from "three";
 import { clearViewportCaptureHandler, requestViewportCapture } from "../../io/captureBridge";
 import { getViewportAspectFrameRect } from "../viewportAspectFrame";
+import { getCameraPlaybackSnapshot } from "../../schema/cameraPlayback";
 
 const mockCameraPositionSet = vi.hoisted(() => vi.fn());
 const mockCameraLookAt = vi.hoisted(() => vi.fn());
@@ -19,6 +20,7 @@ const mockCaptureVisibleObject = vi.hoisted(() => ({
   visible: true,
 }));
 const mockRenderVisibilitySnapshots = vi.hoisted(() => [] as boolean[][]);
+let renderedCaptureCamera: PerspectiveCamera;
 
 beforeEach(() => {
   window.history.replaceState({}, "", "/?instanceId=desk_1");
@@ -112,6 +114,7 @@ vi.mock("@react-three/fiber", async () => {
         camera: testCamera,
         gl: {
           render: () => {
+            renderedCaptureCamera = testCamera;
             mockRenderVisibilitySnapshots.push([
               ...mockCaptureExcludedObjects.map((object) => object.visible),
               mockCaptureVisibleObject.visible,
@@ -766,6 +769,39 @@ it("captures every four-view screenshot using the selected viewport aspect ratio
   });
   expect(drawImage).toHaveBeenCalledTimes(4);
   expect(cropCanvas.width / cropCanvas.height).toBeCloseTo(4 / 3, 2);
+});
+
+it.each(["four", "twelve"] as const)("%s 方位截图不随当前视口移动或缩放改变机位", async (preset) => {
+  render(<App />);
+  const request = { preset, source: "capture-panel" as const };
+  const first = await requestViewportCapture(request);
+  renderedCaptureCamera.position.set(25, 18, -30);
+  renderedCaptureCamera.lookAt(7, 2, 9);
+  renderedCaptureCamera.fov = 90;
+  const position = renderedCaptureCamera.position.clone();
+  const quaternion = renderedCaptureCamera.quaternion.clone();
+
+  const second = await requestViewportCapture(request);
+
+  expect(second).toHaveLength(preset === "four" ? 4 : 12);
+  expect(second.map((result) => result.meta)).toEqual(first.map((result) => result.meta));
+  expect(renderedCaptureCamera.position.toArray()).toEqual(position.toArray());
+  expect(renderedCaptureCamera.quaternion.toArray()).toEqual(quaternion.toArray());
+  expect(renderedCaptureCamera.fov).toBe(90);
+});
+
+it("导演视角下截图使用指定机位并恢复编辑视角", async () => {
+  render(<App />);
+  await requestViewportCapture({ preset: "current", source: "capture-panel" });
+  const originalPosition = renderedCaptureCamera.position.clone();
+  const state = useDirectorStore.getState();
+  const camera = state.project.cameras[0];
+  const expected = getCameraPlaybackSnapshot(camera, state.project.objects, state.cameraMotionProgress, state.project.scene);
+
+  const [result] = await requestViewportCapture({ preset: "current", source: "camera-panel", cameraId: camera.id });
+
+  expect(result.meta).toEqual({ mode: "camera", cameraId: camera.id, position: expected.position, target: expected.target, fov: expected.fov });
+  expect(renderedCaptureCamera.position.toArray()).toEqual(originalPosition.toArray());
 });
 
 it("synchronizes the real render camera on every first-person motion preview update", () => {

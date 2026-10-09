@@ -243,6 +243,9 @@ export function CameraPanel() {
       const preview = results[0];
       if (preview) {
         addCameraCaptures(currentCamera.id, [preview.dataUrl]);
+        const savedCaptures = useDirectorStore.getState().project.cameras
+          .find((item) => item.id === currentCamera.id)?.captures ?? [];
+        setViewerCapture(savedCaptures[savedCaptures.length - 1] ?? null);
       }
     } catch (error) {
       setCaptureError(error instanceof Error ? error.message : "机位截图失败");
@@ -563,9 +566,10 @@ export function CameraPanel() {
       .filter(Boolean)
       .join(" ");
 
-    return (
+    return createPortal(
       <div
         aria-label="相机截图查看器"
+        aria-modal="true"
         className="camera-capture-viewer"
         role="dialog"
         onClick={closeViewer}
@@ -621,7 +625,8 @@ export function CameraPanel() {
             draggable={false}
           />
         </div>
-      </div>
+      </div>,
+      document.body,
     );
   }
 

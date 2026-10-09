@@ -88,6 +88,8 @@ export const DEFAULT_DIRECTOR_VIEW_SNAPSHOT: CameraShotSnapshot = DEFAULT_DIRECT
 const VIEWPORT_FRAME_PADDING = 40;
 const VIEWPORT_TOOLBAR_BOTTOM_OFFSET = 40;
 const DEFAULT_VIEWPORT_TOOLBAR_HEIGHT = 44;
+const CAPTURE_ORBIT_RADIUS = 6;
+const CAPTURE_ORBIT_PHI = Math.PI / 2 - 0.2;
 const GIZMO_AXIS_COLORS: [string, string, string] = ["#E56C5B", "#6CDB7A", "#7AA7FF"];
 const GIZMO_VIEWPORT_SCALE = 25;
 const LEFT_PANEL_WIDTH = 196;
@@ -418,9 +420,13 @@ function CanvasCaptureBridge({
       preset: "current" | "four" | "twelve";
       source: "capture-panel" | "camera-panel";
     }): Promise<ScreenshotResult[]> => {
+      const requestedCamera = cameraId
+        ? useDirectorStore.getState().project.cameras.find((item) => item.id === cameraId)
+        : undefined;
+      const captureCamera = requestedCamera ?? (viewMode === "camera" ? activeCamera : undefined);
       const target = new Vector3(0, 1.2, 0);
-      if (viewMode === "camera" && activeCamera) {
-        target.fromArray(activeCamera.target);
+      if (captureCamera) {
+        target.fromArray(captureCamera.target);
       } else if (controlsRef.current?.target) {
         target.copy(controlsRef.current.target);
       }
@@ -428,6 +434,15 @@ function CanvasCaptureBridge({
       const originalPosition = workingCamera.position.clone();
       const originalQuaternion = workingCamera.quaternion.clone();
       const originalFov = workingCamera.fov;
+
+      const cameraSnapshot = source === "camera-panel" && requestedCamera
+        ? getCameraPlaybackSnapshot(
+          requestedCamera,
+          useDirectorStore.getState().project.objects,
+          useDirectorStore.getState().cameraMotionProgress,
+          useDirectorStore.getState().project.scene,
+        )
+        : undefined;
 
       const snapshot = (label: string) => {
         withViewportCaptureHelpersHidden(scene, () => {
@@ -440,7 +455,7 @@ function CanvasCaptureBridge({
             labels: getViewportCaptureLabels(),
           }),
           meta: buildScreenshotMeta({
-            mode: viewMode,
+            mode: source === "camera-panel" ? "camera" : viewMode,
             cameraId: cameraId ?? (viewMode === "camera" ? activeCamera?.id ?? null : null),
             fov: workingCamera.fov,
             position: [workingCamera.position.x, workingCamera.position.y, workingCamera.position.z],
@@ -449,21 +464,23 @@ function CanvasCaptureBridge({
         };
       };
 
-      if (preset === "current") {
-        return [snapshot(source === "camera-panel" ? "当前机位" : "当前视角")];
-      }
-
-      const count = preset === "four" ? 4 : 12;
-      const labelPrefix = preset === "four" ? "四方位" : "十二方位";
-      const offset = originalPosition.clone().sub(target);
-      const spherical = new Spherical().setFromVector3(offset.lengthSq() === 0 ? new Vector3(0, 0, 6) : offset);
-      const phi = Math.min(Math.max(spherical.phi, 0.35), Math.PI - 0.35);
-      const radius = spherical.radius || 6;
-
       try {
+        if (preset === "current") {
+          if (cameraSnapshot) {
+            applySnapshotToCamera(workingCamera, cameraSnapshot);
+            target.fromArray(cameraSnapshot.target);
+          }
+          return [snapshot(source === "camera-panel" ? "当前机位" : "当前视角")];
+        }
+
+        // 固定环绕中心、距离、高度和起始方向，不依赖编辑视口或所选相机。
+        target.set(0, 1.2, 0);
+        workingCamera.fov = DEFAULT_DIRECTOR_VIEW_SNAPSHOT.fov;
+        const count = preset === "four" ? 4 : 12;
+        const labelPrefix = preset === "four" ? "四方位" : "十二方位";
         const results: ScreenshotResult[] = [];
         for (let index = 0; index < count; index += 1) {
-          const orbit = new Spherical(radius, phi, spherical.theta + (Math.PI * 2 * index) / count);
+          const orbit = new Spherical(CAPTURE_ORBIT_RADIUS, CAPTURE_ORBIT_PHI, (Math.PI * 2 * index) / count);
           const nextPosition = target.clone().add(new Vector3().setFromSpherical(orbit));
           workingCamera.position.copy(nextPosition);
           workingCamera.lookAt(target);
